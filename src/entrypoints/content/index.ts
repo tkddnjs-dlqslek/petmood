@@ -22,7 +22,7 @@ export default defineContentScript({
     );
 
     function showOverlay(payload: NotificationPayload): void {
-      removeOverlay(); // Clean up any existing overlay
+      removeOverlay();
 
       const host = document.createElement("div");
       host.id = SHADOW_HOST_ID;
@@ -49,20 +49,19 @@ export default defineContentScript({
       if (payload.displayType === "running") {
         container.innerHTML = createRunningPetHTML(payload);
       } else {
-        container.innerHTML = createNotificationCardHTML(payload);
+        container.innerHTML = createBubbleNotificationHTML(payload);
         container.className += ` position-${payload.position}`;
       }
 
       shadow.appendChild(container);
 
-      // Make card clickable for dismiss
-      const card = container.querySelector(".petmood-card");
+      // Make clickable for dismiss
+      const card = container.querySelector(".petmood-notification");
       if (card) {
         (card as HTMLElement).style.pointerEvents = "auto";
         card.addEventListener("click", () => removeOverlay());
       }
 
-      // Auto-dismiss
       dismissTimeout = setTimeout(
         () => removeOverlay(),
         payload.durationSeconds * 1000
@@ -75,22 +74,18 @@ export default defineContentScript({
         dismissTimeout = null;
       }
       const host = document.getElementById(SHADOW_HOST_ID);
-      if (host) {
-        host.remove();
-      }
+      if (host) host.remove();
       chrome.runtime.sendMessage({ type: "NOTIFICATION_DISMISSED" }).catch(() => {});
     }
 
-    function createNotificationCardHTML(payload: NotificationPayload): string {
+    function createBubbleNotificationHTML(payload: NotificationPayload): string {
       return `
-        <div class="petmood-card petmood-slide-in">
-          <div class="petmood-card-inner">
-            <img class="petmood-pet-image" src="${payload.imageDataUrl}" alt="Your pet" />
-            <div class="petmood-message">
-              <p>${payload.message}</p>
-            </div>
+        <div class="petmood-notification petmood-pop-in">
+          <div class="petmood-bubble">
+            <p class="petmood-bubble-text">${payload.message}</p>
+            <div class="petmood-bubble-tail"></div>
           </div>
-          <button class="petmood-close">&times;</button>
+          <img class="petmood-pet-image" src="${payload.imageDataUrl}" alt="Pet" />
         </div>
       `;
     }
@@ -98,8 +93,10 @@ export default defineContentScript({
     function createRunningPetHTML(payload: NotificationPayload): string {
       return `
         <div class="petmood-running">
+          <div class="petmood-running-bubble">
+            <p>${payload.message}</p>
+          </div>
           <img class="petmood-running-pet" src="${payload.imageDataUrl}" alt="Running pet" />
-          <p class="petmood-running-message">${payload.message}</p>
         </div>
       `;
     }
@@ -122,121 +119,114 @@ export default defineContentScript({
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
-        /* Notification Card */
-        .petmood-card {
+        /* ===== Bubble Notification ===== */
+        .petmood-notification {
           position: fixed;
-          background: white;
-          border-radius: 16px;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-          padding: 16px;
-          max-width: 320px;
-          cursor: pointer;
-          transition: transform 0.2s ease, opacity 0.2s ease;
-        }
-
-        .petmood-card:hover {
-          transform: scale(1.02);
-        }
-
-        .position-top-right .petmood-card { top: 20px; right: 20px; }
-        .position-top-left .petmood-card { top: 20px; left: 20px; }
-        .position-bottom-right .petmood-card { bottom: 20px; right: 20px; }
-        .position-bottom-left .petmood-card { bottom: 20px; left: 20px; }
-
-        .petmood-card-inner {
           display: flex;
+          flex-direction: column;
           align-items: center;
-          gap: 12px;
+          cursor: pointer;
         }
 
-        .petmood-pet-image {
-          width: 80px;
-          height: 80px;
-          border-radius: 12px;
-          object-fit: cover;
-          background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+        .position-top-right .petmood-notification { top: 20px; right: 20px; }
+        .position-top-left .petmood-notification { top: 20px; left: 20px; }
+        .position-bottom-right .petmood-notification { bottom: 20px; right: 20px; }
+        .position-bottom-left .petmood-notification { bottom: 20px; left: 20px; }
+
+        /* Speech Bubble */
+        .petmood-bubble {
+          position: relative;
+          background: white;
+          border-radius: 20px;
+          padding: 14px 20px;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+          max-width: 240px;
+          margin-bottom: 8px;
         }
 
-        .petmood-message {
-          flex: 1;
-        }
-
-        .petmood-message p {
+        .petmood-bubble-text {
           font-size: 14px;
-          line-height: 1.5;
+          line-height: 1.6;
           color: #333;
           word-break: keep-all;
+          text-align: center;
         }
 
-        .petmood-close {
+        /* Bubble tail (triangle pointing down to pet) */
+        .petmood-bubble-tail {
           position: absolute;
-          top: 8px;
-          right: 8px;
-          background: none;
-          border: none;
-          font-size: 18px;
-          color: #999;
-          cursor: pointer;
-          pointer-events: auto;
-          width: 24px;
-          height: 24px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 50%;
+          bottom: -10px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 0;
+          height: 0;
+          border-left: 10px solid transparent;
+          border-right: 10px solid transparent;
+          border-top: 12px solid white;
+          filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.06));
         }
 
-        .petmood-close:hover {
-          background: #f0f0f0;
-          color: #333;
+        /* Pet cutout image */
+        .petmood-pet-image {
+          width: 120px;
+          height: 120px;
+          object-fit: contain;
+          filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.15));
         }
 
-        /* Slide-in Animation */
-        .petmood-slide-in {
-          animation: slideIn 0.3s ease-out forwards;
+        /* Pop-in Animation */
+        .petmood-pop-in {
+          animation: popIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
         }
 
-        @keyframes slideIn {
-          from {
+        @keyframes popIn {
+          0% {
             opacity: 0;
-            transform: translateY(20px);
+            transform: scale(0.5) translateY(30px);
           }
-          to {
+          100% {
             opacity: 1;
-            transform: translateY(0);
+            transform: scale(1) translateY(0);
           }
         }
 
-        /* Running Pet Animation */
+        /* ===== Running Pet ===== */
         .petmood-running {
           position: fixed;
-          bottom: 100px;
+          bottom: 80px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
           pointer-events: none;
           animation: petRun 4s ease-in-out forwards;
         }
 
-        .petmood-running-pet {
-          width: 100px;
-          height: 100px;
-          object-fit: contain;
+        .petmood-running-bubble {
+          background: white;
+          border-radius: 16px;
+          padding: 8px 14px;
+          box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+          margin-bottom: 6px;
+          white-space: nowrap;
         }
 
-        .petmood-running-message {
-          text-align: center;
-          font-size: 13px;
+        .petmood-running-bubble p {
+          font-size: 12px;
           color: #555;
-          background: rgba(255, 255, 255, 0.9);
-          padding: 4px 12px;
-          border-radius: 12px;
-          white-space: nowrap;
-          margin-top: 4px;
+        }
+
+        .petmood-running-pet {
+          width: 90px;
+          height: 90px;
+          object-fit: contain;
+          filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.15));
         }
 
         @keyframes petRun {
           0%   { transform: translateX(-200px) translateY(0px); }
-          25%  { transform: translateX(25vw) translateY(-20px); }
+          25%  { transform: translateX(25vw) translateY(-15px); }
           50%  { transform: translateX(50vw) translateY(0px); }
-          75%  { transform: translateX(75vw) translateY(-20px); }
+          75%  { transform: translateX(75vw) translateY(-15px); }
           100% { transform: translateX(calc(100vw + 200px)) translateY(0px); }
         }
       `;

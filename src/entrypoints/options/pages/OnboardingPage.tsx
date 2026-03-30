@@ -218,9 +218,12 @@ export default function OnboardingPage() {
             <h1 className="text-xl font-bold text-center mb-2">
               {petName}의 사진을 카테고리별로 올려주세요!
             </h1>
-            <p className="text-sm text-gray-400 text-center mb-6">
+            <p className="text-sm text-gray-400 text-center mb-3">
               각 감정/행동에 맞는 사진을 넣어주세요 (카테고리당 최대 10장)
             </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-xs text-amber-700">
+              <strong>TIP:</strong> 반려동물이 크게 나온 사진이 좋아요! 배경이 단순할수록 누끼가 깔끔하게 따집니다.
+            </div>
 
             <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
               {ACTIVITY_TYPES.map((activity) => (
