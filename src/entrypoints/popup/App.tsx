@@ -7,13 +7,9 @@ import {
 } from "../../lib/templates/selector";
 import type { PetMoodSettings, DisplayType } from "../../types";
 
-const ANIM_TESTS: { type: DisplayType; label: string; emoji: string }[] = [
-  { type: "bounce", label: "통통 점프", emoji: "😊" },
-  { type: "peek", label: "쏙 올라오기", emoji: "🍽️" },
-  { type: "running", label: "달리기", emoji: "🏃" },
-  { type: "float", label: "둥둥 떠다님", emoji: "😴" },
-  { type: "wobble", label: "흔들흔들", emoji: "😢" },
-  { type: "spin", label: "빙글 등장", emoji: "😠" },
+const ANIM_TESTS: { type: DisplayType; label: string }[] = [
+  { type: "bubble", label: "말풍선" },
+  { type: "running", label: "달리기 (잡아봐!)" },
 ];
 
 export default function App() {
@@ -144,21 +140,20 @@ export default function App() {
 
       {/* Animation Test Buttons */}
       <div className="mb-3">
-        <p className="text-xs text-gray-400 mb-2">애니메이션 테스트</p>
-        <div className="grid grid-cols-3 gap-1.5">
-          {ANIM_TESTS.map(({ type, label, emoji }) => (
+        <p className="text-xs text-gray-400 mb-2">테스트</p>
+        <div className="grid grid-cols-2 gap-2">
+          {ANIM_TESTS.map(({ type, label }) => (
             <button
               key={type}
               onClick={() => handleTestAnimation(type)}
               disabled={!!sending}
-              className={`flex flex-col items-center py-2 px-1 rounded-lg text-[11px] transition border ${
+              className={`py-2.5 px-3 rounded-lg text-sm font-medium transition border ${
                 sending === type
-                  ? "bg-orange-100 border-orange-300"
-                  : "bg-white border-gray-200 hover:border-orange-300 hover:bg-orange-50"
+                  ? "bg-orange-100 border-orange-300 text-orange-600"
+                  : "bg-white border-gray-200 hover:border-orange-300 hover:bg-orange-50 text-gray-700"
               } disabled:opacity-50`}
             >
-              <span className="text-lg mb-0.5">{emoji}</span>
-              <span className="text-gray-600">{label}</span>
+              {label}
             </button>
           ))}
         </div>

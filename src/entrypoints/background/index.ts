@@ -212,7 +212,7 @@ export default defineBackground(() => {
       activity === "running" &&
       Math.random() > 0.5
         ? "running"
-        : "card";
+        : "bubble";
 
     const payload: NotificationPayload = {
       imageDataUrl,

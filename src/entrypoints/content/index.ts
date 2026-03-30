@@ -44,34 +44,128 @@ export default defineContentScript({
 
       const container = document.createElement("div");
       container.className = "petmood-container";
-      container.innerHTML = createHTML(payload);
       shadow.appendChild(container);
 
-      // Random position (except running which traverses screen)
-      if (payload.displayType !== "running") {
-        const notification = container.querySelector(".petmood-notification") as HTMLElement;
-        if (notification) {
-          const randX = Math.floor(Math.random() * (window.innerWidth - 280));
-          const randY = Math.floor(Math.random() * (window.innerHeight - 300));
-          notification.style.left = `${Math.max(20, randX)}px`;
-          notification.style.top = `${Math.max(20, randY)}px`;
-          notification.style.right = "auto";
-          notification.style.bottom = "auto";
-        }
+      if (payload.displayType === "running") {
+        startRunningAnimation(container, payload);
+      } else {
+        showBubbleNotification(container, payload);
       }
+    }
 
-      // Click anywhere on notification to dismiss immediately
-      const clickTarget = container.querySelector(".petmood-notification, .petmood-running");
-      if (clickTarget) {
-        (clickTarget as HTMLElement).style.pointerEvents = "auto";
-        (clickTarget as HTMLElement).style.cursor = "pointer";
-        clickTarget.addEventListener("click", () => removeOverlay());
-      }
+    // ===== Bubble Notification (말풍선) =====
+    function showBubbleNotification(
+      container: HTMLElement,
+      payload: NotificationPayload
+    ): void {
+      const notification = document.createElement("div");
+      notification.className = "petmood-notification";
+      notification.innerHTML = `
+        <div class="petmood-bubble">
+          <p>${payload.message}</p>
+          <div class="petmood-tail"></div>
+        </div>
+        <img class="petmood-pet" src="${payload.imageDataUrl}" />
+      `;
 
+      // Random position
+      const x = Math.floor(Math.random() * (window.innerWidth - 280));
+      const y = Math.floor(Math.random() * (window.innerHeight - 280));
+      notification.style.left = `${Math.max(20, x)}px`;
+      notification.style.top = `${Math.max(20, y)}px`;
+
+      // Click to dismiss
+      notification.style.pointerEvents = "auto";
+      notification.style.cursor = "pointer";
+      notification.addEventListener("click", () => removeOverlay());
+
+      container.appendChild(notification);
+
+      // Auto-dismiss
       dismissTimeout = setTimeout(
         () => removeOverlay(),
-        payload.displayType === "running" ? 5000 : payload.durationSeconds * 1000
+        payload.durationSeconds * 1000
       );
+    }
+
+    // ===== Running Animation (달리기 — 사선이동 + 잡기) =====
+    function startRunningAnimation(
+      container: HTMLElement,
+      payload: NotificationPayload
+    ): void {
+      const runner = document.createElement("div");
+      runner.className = "petmood-runner";
+      runner.innerHTML = `
+        <div class="petmood-run-bubble"><p>${payload.message}</p></div>
+        <img class="petmood-run-pet" src="${payload.imageDataUrl}" />
+      `;
+      container.appendChild(runner);
+
+      // Animation state
+      let x = -150;
+      const screenW = window.innerWidth;
+      const speed = 3;
+      let angle = 0;
+      let caught = false;
+      let frame: number;
+      const baseY = window.innerHeight * 0.6;
+
+      runner.style.pointerEvents = "auto";
+      runner.style.cursor = "pointer";
+
+      // Click = caught!
+      runner.addEventListener("click", () => {
+        if (caught) return;
+        caught = true;
+
+        // Change bubble text to "아이고고..."
+        const bubble = runner.querySelector(".petmood-run-bubble p");
+        if (bubble) bubble.textContent = "아이고고... 잡혔다...";
+
+        // Stop and fade out
+        runner.style.transition = "opacity 1.5s ease-out";
+        setTimeout(() => {
+          runner.style.opacity = "0";
+          setTimeout(() => removeOverlay(), 1500);
+        }, 800);
+      });
+
+      // Zigzag movement (사선 이동)
+      function animate() {
+        if (caught) return;
+
+        x += speed;
+        angle += 0.04;
+
+        // Zigzag: 사선 위/아래 반복 (45도 느낌)
+        const zigzagY = Math.sin(angle) * 60;
+        const currentY = baseY + zigzagY;
+
+        runner.style.left = `${x}px`;
+        runner.style.top = `${currentY}px`;
+
+        // Exited screen → show escape message
+        if (x > screenW + 100) {
+          const bubble = runner.querySelector(".petmood-run-bubble p");
+          if (bubble) bubble.textContent = "우헤헿 안 잡혔당~";
+          runner.style.transition = "opacity 1s ease-out";
+          setTimeout(() => {
+            runner.style.opacity = "0";
+            setTimeout(() => removeOverlay(), 1000);
+          }, 300);
+          return;
+        }
+
+        frame = requestAnimationFrame(animate);
+      }
+
+      frame = requestAnimationFrame(animate);
+
+      // Fallback timeout
+      dismissTimeout = setTimeout(() => {
+        cancelAnimationFrame(frame);
+        removeOverlay();
+      }, 15000);
     }
 
     function removeOverlay(): void {
@@ -81,27 +175,6 @@ export default defineContentScript({
       }
       document.getElementById(SHADOW_HOST_ID)?.remove();
       chrome.runtime.sendMessage({ type: "NOTIFICATION_DISMISSED" }).catch(() => {});
-    }
-
-    function createHTML(payload: NotificationPayload): string {
-      const { imageDataUrl, message, displayType } = payload;
-
-      if (displayType === "running") {
-        return `
-          <div class="petmood-running">
-            <div class="petmood-run-bubble"><p>${message}</p></div>
-            <img class="petmood-run-pet" src="${imageDataUrl}" />
-          </div>`;
-      }
-
-      return `
-        <div class="petmood-notification anim-${displayType}">
-          <div class="petmood-bubble">
-            <p>${message}</p>
-            <div class="petmood-tail"></div>
-          </div>
-          <img class="petmood-pet" src="${imageDataUrl}" />
-        </div>`;
     }
 
     function getOverlayStyles(): string {
@@ -116,11 +189,13 @@ export default defineContentScript({
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
+        /* ===== Bubble Notification ===== */
         .petmood-notification {
           position: fixed;
           display: flex;
           flex-direction: column;
           align-items: center;
+          animation: fadeIn 0.3s ease-out;
         }
 
         .petmood-bubble {
@@ -159,35 +234,19 @@ export default defineContentScript({
           filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15));
         }
 
-        /* bounce */
-        .anim-bounce { animation: bounceIn 0.5s ease-out forwards; }
-        .anim-bounce .petmood-pet { animation: bounceJump 0.6s ease-in-out 0.5s infinite alternate; }
-        @keyframes bounceIn {
-          0% { opacity: 0; transform: scale(0.3) translateY(40px); }
-          60% { opacity: 1; transform: scale(1.1) translateY(-10px); }
-          100% { transform: scale(1) translateY(0); }
-        }
-        @keyframes bounceJump {
-          0% { transform: translateY(0); }
-          100% { transform: translateY(-18px); }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
 
-        /* peek */
-        .anim-peek { animation: peekUp 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards; }
-        @keyframes peekUp {
-          0% { transform: translateY(100%); opacity: 0; }
-          100% { transform: translateY(0); opacity: 1; }
-        }
-
-        /* running */
-        .petmood-running {
+        /* ===== Running Animation ===== */
+        .petmood-runner {
           position: fixed;
-          bottom: 80px;
           display: flex;
           flex-direction: column;
           align-items: center;
-          animation: petRun 4s ease-in-out forwards;
         }
+
         .petmood-run-bubble {
           background: white;
           border-radius: 16px;
@@ -196,65 +255,17 @@ export default defineContentScript({
           margin-bottom: 6px;
           white-space: nowrap;
         }
-        .petmood-run-bubble p { font-size: 12px; color: #555; }
+
+        .petmood-run-bubble p {
+          font-size: 13px;
+          color: #555;
+        }
+
         .petmood-run-pet {
-          width: 90px; height: 90px;
+          width: 100px;
+          height: 100px;
           object-fit: contain;
           filter: drop-shadow(0 2px 6px rgba(0,0,0,0.15));
-        }
-        @keyframes petRun {
-          0%   { transform: translateX(-200px) translateY(0); }
-          25%  { transform: translateX(25vw) translateY(-15px); }
-          50%  { transform: translateX(50vw) translateY(0); }
-          75%  { transform: translateX(75vw) translateY(-15px); }
-          100% { transform: translateX(calc(100vw + 200px)) translateY(0); }
-        }
-
-        /* float */
-        .anim-float { animation: floatIn 0.8s ease-out forwards; }
-        .anim-float .petmood-pet { animation: floatDrift 2.5s ease-in-out infinite alternate; }
-        .anim-float .petmood-bubble { animation: floatDrift 2.5s ease-in-out 0.3s infinite alternate; }
-        @keyframes floatIn {
-          0% { opacity: 0; transform: scale(0.8); }
-          100% { opacity: 1; transform: scale(1); }
-        }
-        @keyframes floatDrift {
-          0% { transform: translateY(0); }
-          100% { transform: translateY(-12px); }
-        }
-
-        /* wobble */
-        .anim-wobble { animation: wobbleIn 0.5s ease-out forwards; }
-        .anim-wobble .petmood-pet {
-          animation: wobbleSwing 1s ease-in-out 0.5s infinite alternate;
-          transform-origin: bottom center;
-        }
-        @keyframes wobbleIn {
-          0% { opacity: 0; transform: translateY(30px); }
-          100% { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes wobbleSwing {
-          0% { transform: rotate(-8deg); }
-          100% { transform: rotate(8deg); }
-        }
-
-        /* spin */
-        .anim-spin { animation: spinAppear 0.6s ease-out forwards; }
-        .anim-spin .petmood-pet {
-          animation: spinIn 0.7s cubic-bezier(0.34,1.56,0.64,1) forwards;
-        }
-        .anim-spin .petmood-bubble {
-          animation: shakeAngry 0.4s ease-in-out 0.7s 3;
-        }
-        @keyframes spinAppear { 0% { opacity: 0; } 100% { opacity: 1; } }
-        @keyframes spinIn {
-          0% { transform: rotate(-360deg) scale(0.3); opacity: 0; }
-          100% { transform: rotate(0deg) scale(1); opacity: 1; }
-        }
-        @keyframes shakeAngry {
-          0%, 100% { transform: translateX(0); }
-          25% { transform: translateX(-5px); }
-          75% { transform: translateX(5px); }
         }
       `;
     }
