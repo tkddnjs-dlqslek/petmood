@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { settingsStore } from "../../../lib/storage/settings-store";
 import { photoDB } from "../../../lib/storage/photo-db";
-import { sendToBackground } from "../../../lib/messages/protocol";
+import { processPhoto } from "../../../lib/ai/processor";
 import type { PetType, StoredPhoto, ActivityType } from "../../../types";
 import { ACTIVITY_TYPES } from "../../../types";
 
@@ -52,17 +52,14 @@ export default function OnboardingPage() {
         const imageDataUrl = await fileToDataUrl(files[i]);
         const thumbnailDataUrl = await createThumbnail(files[i]);
 
-        // Send to Service Worker → Offscreen Document for AI processing
-        const result: any = await sendToBackground({
-          type: "PROCESS_PHOTO",
-          payload: { imageDataUrl, fileName: files[i].name },
-        });
+        // Run AI directly in Options Page (no SW/offscreen needed)
+        const result = await processPhoto(imageDataUrl, (msg) =>
+          setProgress(`사진 ${i + 1}/${files.length}: ${msg}`)
+        );
 
-        // Use AI results if available, fallback to original image
-        const cutoutDataUrl = result?.cutoutDataUrl ?? imageDataUrl;
-        const activity = result?.classification?.activity ??
-          ACTIVITY_TYPES[Math.floor(Math.random() * ACTIVITY_TYPES.length)];
-        const confidence = result?.classification?.confidence ?? 0.5;
+        const cutoutDataUrl = result.cutoutDataUrl;
+        const activity = result.classification.activity;
+        const confidence = result.classification.confidence;
 
         const arrayBuffer = await files[i].arrayBuffer();
         const photo: StoredPhoto = {

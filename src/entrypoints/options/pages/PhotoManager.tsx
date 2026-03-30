@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { photoDB } from "../../../lib/storage/photo-db";
-import { sendToBackground } from "../../../lib/messages/protocol";
+import { processPhoto } from "../../../lib/ai/processor";
 import type { StoredPhoto, ActivityType } from "../../../types";
 import { ACTIVITY_TYPES } from "../../../types";
 
@@ -41,16 +41,12 @@ export default function PhotoManager() {
       const imageDataUrl = await fileToDataUrl(file);
       const thumbnailDataUrl = await createThumbnail(file);
 
-      // Send to Service Worker → Offscreen Document for AI processing
-      const result: any = await sendToBackground({
-        type: "PROCESS_PHOTO",
-        payload: { imageDataUrl, fileName: file.name },
-      });
+      // Run AI directly in Options Page
+      const result = await processPhoto(imageDataUrl);
 
-      const cutoutDataUrl = result?.cutoutDataUrl ?? imageDataUrl;
-      const activity = result?.classification?.activity ??
-        ACTIVITY_TYPES[Math.floor(Math.random() * ACTIVITY_TYPES.length)];
-      const confidence = result?.classification?.confidence ?? 0.5;
+      const cutoutDataUrl = result.cutoutDataUrl;
+      const activity = result.classification.activity;
+      const confidence = result.classification.confidence;
 
       const arrayBuffer = await file.arrayBuffer();
       const photo: StoredPhoto = {
