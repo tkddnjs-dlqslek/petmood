@@ -1,16 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import { photoDB } from "../../../lib/storage/photo-db";
-import { processPhoto } from "../../../lib/ai/processor";
+import { removeBackgroundFromImage } from "../../../lib/ai/processor";
 import type { StoredPhoto, ActivityType } from "../../../types";
 import { ACTIVITY_TYPES } from "../../../types";
 
 const ACTIVITY_LABELS: Record<ActivityType, string> = {
-  resting: "자는/누운",
-  eating: "먹는 중",
-  active: "뛰는/노는",
-  alert: "앉은/서있는",
-  relaxing: "편하게 쉬는",
-  yawning: "하품/기지개",
+  happy: "웃는",
+  eating: "먹는",
+  running: "뛰는",
+  sleeping: "자는",
+  sad: "슬픔",
+  angry: "화남",
 };
 
 export default function PhotoManager() {
@@ -28,25 +28,30 @@ export default function PhotoManager() {
   };
 
   const MAX_TOTAL_PHOTOS = 100;
+  const [addingCategory, setAddingCategory] = useState<ActivityType | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const handleAddPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!addingCategory) return;
     const files = Array.from(e.target.files ?? []);
     const remaining = MAX_TOTAL_PHOTOS - photos.length;
     if (remaining <= 0) {
       alert("사진은 최대 100장까지 등록할 수 있어요!");
       return;
     }
+    setIsProcessing(true);
     const filesToProcess = files.slice(0, remaining);
     for (const file of filesToProcess) {
       const imageDataUrl = await fileToDataUrl(file);
       const thumbnailDataUrl = await createThumbnail(file);
 
-      // Run AI directly in Options Page
-      const result = await processPhoto(imageDataUrl);
-
-      const cutoutDataUrl = result.cutoutDataUrl;
-      const activity = result.classification.activity;
-      const confidence = result.classification.confidence;
+      // Background removal only
+      let cutoutDataUrl = imageDataUrl;
+      try {
+        cutoutDataUrl = await removeBackgroundFromImage(imageDataUrl);
+      } catch (err) {
+        console.error("[PetMood] 누끼 실패:", err);
+      }
 
       const arrayBuffer = await file.arrayBuffer();
       const photo: StoredPhoto = {
@@ -55,14 +60,16 @@ export default function PhotoManager() {
         cutoutBlob: new Blob([arrayBuffer]),
         cutoutDataUrl,
         thumbnailDataUrl,
-        activity,
-        confidence,
+        activity: addingCategory,
+        confidence: 1.0,
         userCorrected: false,
         petType: "dog",
         createdAt: Date.now(),
       };
       await photoDB.addPhoto(photo);
     }
+    setIsProcessing(false);
+    setAddingCategory(null);
     loadPhotos();
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -80,26 +87,48 @@ export default function PhotoManager() {
 
   return (
     <div>
-      {/* Add Photos Button */}
+      {/* Add Photos */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-medium">
           등록된 사진 ({photos.length}장)
         </h3>
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-600 transition"
-        >
-          + 사진 추가
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={handleAddPhotos}
-          className="hidden"
-        />
+        <div className="relative">
+          {addingCategory ? (
+            <span className="text-xs text-orange-500">
+              {ACTIVITY_LABELS[addingCategory]} 사진 선택 중...
+            </span>
+          ) : (
+            <div className="flex gap-1 flex-wrap">
+              {ACTIVITY_TYPES.map((a) => (
+                <button
+                  key={a}
+                  onClick={() => {
+                    setAddingCategory(a);
+                    setTimeout(() => fileInputRef.current?.click(), 100);
+                  }}
+                  className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded hover:bg-orange-200 transition"
+                  title={`${ACTIVITY_LABELS[a]} 사진 추가`}
+                >
+                  + {ACTIVITY_LABELS[a]}
+                </button>
+              ))}
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleAddPhotos}
+            className="hidden"
+          />
+        </div>
       </div>
+      {isProcessing && (
+        <div className="mb-4 p-3 bg-orange-50 rounded-lg text-sm text-orange-600">
+          누끼 처리 중...
+        </div>
+      )}
 
       {photos.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-xl">

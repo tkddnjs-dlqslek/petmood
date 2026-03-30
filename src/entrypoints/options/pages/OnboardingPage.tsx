@@ -1,9 +1,27 @@
 import { useState, useRef } from "react";
 import { settingsStore } from "../../../lib/storage/settings-store";
 import { photoDB } from "../../../lib/storage/photo-db";
-import { processPhoto } from "../../../lib/ai/processor";
+import { removeBackgroundFromImage } from "../../../lib/ai/processor";
 import type { PetType, StoredPhoto, ActivityType } from "../../../types";
 import { ACTIVITY_TYPES } from "../../../types";
+
+const ACTIVITY_LABELS: Record<ActivityType, string> = {
+  happy: "웃는",
+  eating: "먹는",
+  running: "뛰는",
+  sleeping: "자는",
+  sad: "슬픔",
+  angry: "화남",
+};
+
+const ACTIVITY_EMOJI: Record<ActivityType, string> = {
+  happy: "😊",
+  eating: "🍽️",
+  running: "🏃",
+  sleeping: "😴",
+  sad: "😢",
+  angry: "😠",
+};
 
 type Step = "profile" | "upload" | "processing" | "done";
 
@@ -12,80 +30,101 @@ export default function OnboardingPage() {
   const [userName, setUserName] = useState("");
   const [petName, setPetName] = useState("");
   const [petType, setPetType] = useState<PetType>("dog");
-  const [files, setFiles] = useState<File[]>([]);
+
+  // Category-based upload: { activity: File[] }
+  const [categoryFiles, setCategoryFiles] = useState<
+    Record<ActivityType, File[]>
+  >(() => {
+    const init: any = {};
+    for (const a of ACTIVITY_TYPES) init[a] = [];
+    return init;
+  });
+
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState("");
   const [processedCount, setProcessedCount] = useState(0);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [totalCount, setTotalCount] = useState(0);
+
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const handleProfileNext = () => {
     if (!userName.trim() || !petName.trim()) return;
     setStep("upload");
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (
+    activity: ActivityType,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const selected = Array.from(e.target.files ?? []);
-    setFiles((prev) => [...prev, ...selected].slice(0, 20)); // Max 20 photos
+    setCategoryFiles((prev) => ({
+      ...prev,
+      [activity]: [...prev[activity], ...selected].slice(0, 10),
+    }));
   };
 
-  const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+  const removeFile = (activity: ActivityType, index: number) => {
+    setCategoryFiles((prev) => ({
+      ...prev,
+      [activity]: prev[activity].filter((_, i) => i !== index),
+    }));
   };
 
-  const handleUploadAndProcess = async () => {
-    if (files.length === 0) return;
+  const totalFiles = Object.values(categoryFiles).reduce(
+    (sum, files) => sum + files.length,
+    0
+  );
+
+  const handleProcess = async () => {
+    if (totalFiles === 0) return;
     setStep("processing");
     setProcessing(true);
+    setTotalCount(totalFiles);
 
-    // Listen for progress updates
-    const progressListener = (message: { type: string; payload?: { message?: string } }) => {
-      if (message.type === "INFERENCE_PROGRESS" && message.payload?.message) {
-        setProgress(message.payload.message);
-      }
-    };
-    chrome.runtime.onMessage.addListener(progressListener);
+    let count = 0;
 
     try {
-      for (let i = 0; i < files.length; i++) {
-        setProgress(`사진 ${i + 1}/${files.length} 처리 중...`);
+      for (const activity of ACTIVITY_TYPES) {
+        const files = categoryFiles[activity];
+        for (const file of files) {
+          count++;
+          setProgress(
+            `${ACTIVITY_LABELS[activity]} ${count}/${totalFiles} 처리 중...`
+          );
 
-        const imageDataUrl = await fileToDataUrl(files[i]);
-        const thumbnailDataUrl = await createThumbnail(files[i]);
+          const imageDataUrl = await fileToDataUrl(file);
+          const thumbnailDataUrl = await createThumbnail(file);
 
-        // Run AI directly in Options Page (no SW/offscreen needed)
-        const result = await processPhoto(imageDataUrl, (msg) =>
-          setProgress(`사진 ${i + 1}/${files.length}: ${msg}`)
-        );
+          // Background removal only (no classification needed)
+          let cutoutDataUrl = imageDataUrl;
+          try {
+            cutoutDataUrl = await removeBackgroundFromImage(
+              imageDataUrl,
+              (msg) => setProgress(`${count}/${totalFiles}: ${msg}`)
+            );
+          } catch (err) {
+            console.error("[PetMood] 누끼 실패:", err);
+          }
 
-        // Show errors if any
-        if (result.errors.length > 0) {
-          console.warn("[PetMood] Errors:", result.errors);
-          setProgress(`사진 ${i + 1}: ${result.errors.join(", ")}`);
+          const arrayBuffer = await file.arrayBuffer();
+          const photo: StoredPhoto = {
+            id: crypto.randomUUID(),
+            originalBlob: new Blob([arrayBuffer]),
+            cutoutBlob: new Blob([arrayBuffer]),
+            cutoutDataUrl,
+            thumbnailDataUrl,
+            activity, // User-selected category!
+            confidence: 1.0,
+            userCorrected: false,
+            petType,
+            createdAt: Date.now(),
+          };
+
+          await photoDB.addPhoto(photo);
+          setProcessedCount(count);
         }
-
-        const cutoutDataUrl = result.cutoutDataUrl;
-        const activity = result.classification.activity;
-        const confidence = result.classification.confidence;
-
-        const arrayBuffer = await files[i].arrayBuffer();
-        const photo: StoredPhoto = {
-          id: crypto.randomUUID(),
-          originalBlob: new Blob([arrayBuffer]),
-          cutoutBlob: new Blob([arrayBuffer]),
-          cutoutDataUrl,
-          thumbnailDataUrl,
-          activity: activity as ActivityType,
-          confidence,
-          userCorrected: false,
-          petType,
-          createdAt: Date.now(),
-        };
-
-        await photoDB.addPhoto(photo);
-        setProcessedCount(i + 1);
       }
 
-      // Save settings
       await settingsStore.set({
         userName: userName.trim(),
         petName: petName.trim(),
@@ -99,14 +138,13 @@ export default function OnboardingPage() {
       console.error("Processing error:", error);
       setProgress(`오류 발생: ${error}`);
     } finally {
-      chrome.runtime.onMessage.removeListener(progressListener);
       setProcessing(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50 flex items-center justify-center p-6">
-      <div className="bg-white rounded-2xl shadow-lg max-w-md w-full p-8">
+      <div className="bg-white rounded-2xl shadow-lg max-w-lg w-full p-8">
         {/* Step 1: Profile */}
         {step === "profile" && (
           <div>
@@ -130,7 +168,6 @@ export default function OnboardingPage() {
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-orange-400"
                 />
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   반려동물 이름
@@ -143,7 +180,6 @@ export default function OnboardingPage() {
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-orange-400"
                 />
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   어떤 동물인가요?
@@ -159,7 +195,7 @@ export default function OnboardingPage() {
                           : "border-gray-200 text-gray-500 hover:border-gray-300"
                       }`}
                     >
-                      {type === "dog" ? "강아지" : "고양이"}
+                      {type === "dog" ? "🐕 강아지" : "🐈 고양이"}
                     </button>
                   ))}
                 </div>
@@ -176,65 +212,68 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* Step 2: Photo Upload */}
+        {/* Step 2: Category-based Upload */}
         {step === "upload" && (
           <div>
-            <h1 className="text-2xl font-bold text-center mb-2">
-              {petName}의 사진을 올려주세요!
+            <h1 className="text-xl font-bold text-center mb-2">
+              {petName}의 사진을 카테고리별로 올려주세요!
             </h1>
             <p className="text-sm text-gray-400 text-center mb-6">
-              다양한 모습의 사진을 올리면 더 재밌어요
-              <br />
-              (자는 모습, 뛰는 모습, 먹는 모습 등)
+              각 감정/행동에 맞는 사진을 넣어주세요 (카테고리당 최대 10장)
             </p>
 
-            {/* Drop Zone */}
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:border-orange-400 transition"
-            >
-              <p className="text-3xl mb-2">📷</p>
-              <p className="text-sm text-gray-500">
-                클릭하여 사진을 선택하세요
-              </p>
-              <p className="text-xs text-gray-400 mt-1">
-                최대 20장, JPG/PNG
-              </p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleFileSelect}
-                className="hidden"
-              />
-            </div>
+            <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
+              {ACTIVITY_TYPES.map((activity) => (
+                <div
+                  key={activity}
+                  className="border border-gray-200 rounded-xl p-4"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">
+                      {ACTIVITY_EMOJI[activity]} {ACTIVITY_LABELS[activity]}
+                    </span>
+                    <button
+                      onClick={() => fileInputRefs.current[activity]?.click()}
+                      className="text-xs bg-orange-100 text-orange-600 px-3 py-1 rounded-lg hover:bg-orange-200 transition"
+                    >
+                      + 사진 추가
+                    </button>
+                    <input
+                      ref={(el) => { fileInputRefs.current[activity] = el; }}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => handleFileSelect(activity, e)}
+                      className="hidden"
+                    />
+                  </div>
 
-            {/* Preview Grid */}
-            {files.length > 0 && (
-              <div className="mt-4">
-                <p className="text-sm text-gray-500 mb-2">
-                  {files.length}장 선택됨
-                </p>
-                <div className="grid grid-cols-4 gap-2">
-                  {files.map((file, i) => (
-                    <div key={i} className="relative group">
-                      <img
-                        src={URL.createObjectURL(file)}
-                        alt={`Pet ${i + 1}`}
-                        className="w-full h-16 object-cover rounded-lg"
-                      />
-                      <button
-                        onClick={() => removeFile(i)}
-                        className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition"
-                      >
-                        &times;
-                      </button>
+                  {categoryFiles[activity].length > 0 && (
+                    <div className="flex gap-2 flex-wrap">
+                      {categoryFiles[activity].map((file, i) => (
+                        <div key={i} className="relative group">
+                          <img
+                            src={URL.createObjectURL(file)}
+                            alt=""
+                            className="w-14 h-14 object-cover rounded-lg"
+                          />
+                          <button
+                            onClick={() => removeFile(activity, i)}
+                            className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
+                          >
+                            x
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
+
+                  {categoryFiles[activity].length === 0 && (
+                    <p className="text-xs text-gray-300">아직 사진이 없어요</p>
+                  )}
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
 
             <div className="flex gap-3 mt-6">
               <button
@@ -244,11 +283,11 @@ export default function OnboardingPage() {
                 이전
               </button>
               <button
-                onClick={handleUploadAndProcess}
-                disabled={files.length === 0}
+                onClick={handleProcess}
+                disabled={totalFiles === 0}
                 className="flex-1 bg-orange-500 text-white py-3 rounded-xl font-medium text-sm hover:bg-orange-600 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
-                시작하기!
+                시작하기! ({totalFiles}장)
               </button>
             </div>
           </div>
@@ -258,22 +297,18 @@ export default function OnboardingPage() {
         {step === "processing" && (
           <div className="text-center py-8">
             <div className="animate-spin w-12 h-12 border-4 border-orange-200 border-t-orange-500 rounded-full mx-auto mb-4" />
-            <h2 className="text-lg font-bold mb-2">사진 처리 중...</h2>
+            <h2 className="text-lg font-bold mb-2">누끼 처리 중...</h2>
             <p className="text-sm text-gray-400 mb-4">{progress}</p>
             <div className="w-full bg-gray-200 rounded-full h-2">
               <div
                 className="bg-orange-500 h-2 rounded-full transition-all"
                 style={{
-                  width: `${
-                    files.length > 0
-                      ? (processedCount / files.length) * 100
-                      : 0
-                  }%`,
+                  width: `${totalCount > 0 ? (processedCount / totalCount) * 100 : 0}%`,
                 }}
               />
             </div>
             <p className="text-xs text-gray-400 mt-2">
-              {processedCount}/{files.length} 완료
+              {processedCount}/{totalCount} 완료
             </p>
           </div>
         )}
@@ -288,17 +323,12 @@ export default function OnboardingPage() {
               <br />
               브라우징하다 보면 {petName}이가 찾아올 거예요~
             </p>
-            <p className="text-xs text-gray-400">
-              이 페이지에서 사진을 추가하거나 설정을 변경할 수 있어요
-            </p>
           </div>
         )}
       </div>
     </div>
   );
 }
-
-// ===== Utilities =====
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

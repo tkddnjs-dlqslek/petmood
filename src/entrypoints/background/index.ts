@@ -209,7 +209,7 @@ export default defineBackground(() => {
     // Decide display type
     const displayType =
       settings.display.showRunningAnimation &&
-      activity === "active" &&
+      activity === "running" &&
       Math.random() > 0.5
         ? "running"
         : "card";

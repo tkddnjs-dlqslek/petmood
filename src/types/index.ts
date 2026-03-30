@@ -1,11 +1,11 @@
 // ===== Activity Types =====
 export const ACTIVITY_TYPES = [
-  "resting",    // 자는/누운 (sleeping + lying)
+  "happy",      // 웃는
   "eating",     // 먹는
-  "active",     // 뛰는/노는 (running + playing)
-  "alert",      // 앉은/서있는 (sitting + standing)
-  "relaxing",   // 편하게 쉬는 (lying with eyes open)
-  "yawning",    // 하품/기지개 (yawning + stretching)
+  "running",    // 뛰는
+  "sleeping",   // 자는
+  "sad",        // 슬픔
+  "angry",      // 화남
 ] as const;
 
 export type ActivityType = (typeof ACTIVITY_TYPES)[number];

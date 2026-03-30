@@ -73,25 +73,21 @@ export function suggestActivity(
   triggerType: TriggerType
 ): ActivityType {
   const contextMap: Record<string, ActivityType[]> = {
-    // night
-    "night:browse-duration": ["resting", "yawning"],
-    "night:timer": ["resting", "relaxing"],
-    "night:time-of-day": ["resting", "yawning"],
-    // morning
-    "morning:timer": ["yawning", "active", "alert"],
-    "morning:time-of-day": ["yawning", "eating"],
-    "morning:browse-duration": ["yawning", "alert"],
-    // afternoon
-    "afternoon:time-of-day": ["eating", "yawning"],
-    "afternoon:timer": ["active", "alert", "relaxing"],
-    "afternoon:browse-duration": ["alert", "yawning"],
-    // evening
-    "evening:time-of-day": ["eating", "relaxing"],
-    "evening:timer": ["relaxing", "alert", "resting"],
-    "evening:browse-duration": ["resting", "relaxing", "yawning"],
+    "night:browse-duration": ["sleeping", "angry"],
+    "night:timer": ["sleeping", "sad"],
+    "night:time-of-day": ["sleeping"],
+    "morning:timer": ["happy", "running"],
+    "morning:time-of-day": ["eating", "happy"],
+    "morning:browse-duration": ["happy", "running"],
+    "afternoon:time-of-day": ["eating"],
+    "afternoon:timer": ["running", "happy"],
+    "afternoon:browse-duration": ["angry", "sad"],
+    "evening:time-of-day": ["eating", "sleeping"],
+    "evening:timer": ["happy", "sad"],
+    "evening:browse-duration": ["sleeping", "sad", "angry"],
   };
 
   const key = `${timeCtx}:${triggerType}`;
-  const candidates = contextMap[key] ?? ["alert", "relaxing"];
+  const candidates = contextMap[key] ?? ["happy", "sad"];
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
