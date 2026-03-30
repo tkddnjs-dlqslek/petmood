@@ -78,7 +78,7 @@ export default function App() {
 
       // Decide display type
       const displayType =
-        (photo.activity === "running" || photo.activity === "playing") &&
+        photo.activity === "active" &&
         Math.random() > 0.5
           ? "running"
           : "card";

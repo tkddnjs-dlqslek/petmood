@@ -5,16 +5,12 @@ import type { StoredPhoto, ActivityType } from "../../../types";
 import { ACTIVITY_TYPES } from "../../../types";
 
 const ACTIVITY_LABELS: Record<ActivityType, string> = {
-  sleeping: "자는 중",
+  resting: "자는/누운",
   eating: "먹는 중",
-  running: "뛰는 중",
-  yawning: "하품",
-  playing: "노는 중",
-  sitting: "앉아있는",
-  lying: "누워있는",
-  standing: "서있는",
-  "head-tilting": "갸우뚱",
-  stretching: "기지개",
+  active: "뛰는/노는",
+  alert: "앉은/서있는",
+  relaxing: "편하게 쉬는",
+  yawning: "하품/기지개",
 };
 
 export default function PhotoManager() {
