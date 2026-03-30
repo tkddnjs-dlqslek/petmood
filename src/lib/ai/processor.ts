@@ -31,7 +31,7 @@ export async function removeBackgroundFromImage(
   }
 
   log("배경 제거 중...");
-  const output = await bgRemover(imageDataUrl);
+  const output = await bgRemover(imageDataUrl, { threshold: 0.7 });
 
   // Extract RawImage
   let rawImage: any = null;
