@@ -13,10 +13,14 @@ const ACTIVITY_LABELS: Record<ActivityType, string> = {
   angry: "화남",
 };
 
+const MAX_TOTAL_PHOTOS = 100;
+
 export default function PhotoManager() {
   const [photos, setPhotos] = useState<StoredPhoto[]>([]);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingMsg, setProcessingMsg] = useState("");
+  const [expandedCategory, setExpandedCategory] = useState<ActivityType | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
     loadPhotos();
@@ -24,54 +28,65 @@ export default function PhotoManager() {
 
   const loadPhotos = async () => {
     const all = await photoDB.getAllPhotos();
-    setPhotos(all.reverse()); // Newest first
+    setPhotos(all);
   };
 
-  const MAX_TOTAL_PHOTOS = 100;
-  const [addingCategory, setAddingCategory] = useState<ActivityType | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const photosBy = (activity: ActivityType) =>
+    photos.filter((p) => p.activity === activity);
 
-  const handleAddPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!addingCategory) return;
+  const handleAddPhotos = async (
+    activity: ActivityType,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+
     const remaining = MAX_TOTAL_PHOTOS - photos.length;
     if (remaining <= 0) {
       alert("사진은 최대 100장까지 등록할 수 있어요!");
       return;
     }
+
     setIsProcessing(true);
     const filesToProcess = files.slice(0, remaining);
-    for (const file of filesToProcess) {
+
+    for (let i = 0; i < filesToProcess.length; i++) {
+      const file = filesToProcess[i];
+      setProcessingMsg(`${ACTIVITY_LABELS[activity]} ${i + 1}/${filesToProcess.length} 누끼 처리 중...`);
+
       const imageDataUrl = await fileToDataUrl(file);
       const thumbnailDataUrl = await createThumbnail(file);
 
-      // Background removal only
       let cutoutDataUrl = imageDataUrl;
       try {
-        cutoutDataUrl = await removeBackgroundFromImage(imageDataUrl);
+        cutoutDataUrl = await removeBackgroundFromImage(imageDataUrl, (msg) =>
+          setProcessingMsg(`${ACTIVITY_LABELS[activity]} ${i + 1}/${filesToProcess.length}: ${msg}`)
+        );
       } catch (err) {
         console.error("[PetMood] 누끼 실패:", err);
       }
 
       const arrayBuffer = await file.arrayBuffer();
-      const photo: StoredPhoto = {
+      await photoDB.addPhoto({
         id: crypto.randomUUID(),
         originalBlob: new Blob([arrayBuffer]),
         cutoutBlob: new Blob([arrayBuffer]),
         cutoutDataUrl,
         thumbnailDataUrl,
-        activity: addingCategory,
+        activity,
         confidence: 1.0,
         userCorrected: false,
         petType: "dog",
         createdAt: Date.now(),
-      };
-      await photoDB.addPhoto(photo);
+      });
     }
+
     setIsProcessing(false);
-    setAddingCategory(null);
+    setProcessingMsg("");
     loadPhotos();
-    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    const ref = fileInputRefs.current[activity];
+    if (ref) ref.value = "";
   };
 
   const handleDelete = async (id: string) => {
@@ -79,116 +94,125 @@ export default function PhotoManager() {
     loadPhotos();
   };
 
-  const handleActivityChange = async (id: string, activity: ActivityType) => {
-    await photoDB.updateActivity(id, activity);
-    setEditingId(null);
-    loadPhotos();
-  };
-
   return (
     <div>
-      {/* Add Photos */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-medium">
-          등록된 사진 ({photos.length}장)
-        </h3>
-        <div className="relative">
-          {addingCategory ? (
-            <span className="text-xs text-orange-500">
-              {ACTIVITY_LABELS[addingCategory]} 사진 선택 중...
-            </span>
-          ) : (
-            <div className="flex gap-1 flex-wrap">
-              {ACTIVITY_TYPES.map((a) => (
-                <button
-                  key={a}
-                  onClick={() => {
-                    setAddingCategory(a);
-                    setTimeout(() => fileInputRef.current?.click(), 100);
-                  }}
-                  className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded hover:bg-orange-200 transition"
-                  title={`${ACTIVITY_LABELS[a]} 사진 추가`}
-                >
-                  + {ACTIVITY_LABELS[a]}
-                </button>
-              ))}
-            </div>
-          )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={handleAddPhotos}
-            className="hidden"
-          />
-        </div>
+        <h3 className="font-medium">등록된 사진 ({photos.length}/100장)</h3>
       </div>
+
       {isProcessing && (
-        <div className="mb-4 p-3 bg-orange-50 rounded-lg text-sm text-orange-600">
-          누끼 처리 중...
+        <div className="mb-4 p-3 bg-orange-50 rounded-lg text-sm text-orange-600 animate-pulse">
+          {processingMsg}
         </div>
       )}
 
-      {photos.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-xl">
-          <p className="text-gray-400">등록된 사진이 없어요</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-          {photos.map((photo) => (
+      {/* Category sections */}
+      <div className="space-y-3">
+        {ACTIVITY_TYPES.map((activity) => {
+          const categoryPhotos = photosBy(activity);
+          const isExpanded = expandedCategory === activity;
+
+          return (
             <div
-              key={photo.id}
-              className="bg-white rounded-xl overflow-hidden shadow-sm group"
+              key={activity}
+              className="bg-white rounded-xl shadow-sm overflow-hidden"
             >
-              <div className="relative">
-                <img
-                  src={photo.cutoutDataUrl}
-                  alt="Pet"
-                  className="w-full h-32 object-cover"
-                />
+              {/* Category header */}
+              <div className="flex items-center justify-between p-4">
                 <button
-                  onClick={() => handleDelete(photo.id)}
-                  className="absolute top-2 right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
+                  onClick={() =>
+                    setExpandedCategory(isExpanded ? null : activity)
+                  }
+                  className="flex items-center gap-2"
                 >
-                  &times;
+                  <span className="font-medium text-sm">
+                    {ACTIVITY_LABELS[activity]}
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {categoryPhotos.length}장
+                  </span>
+                  {categoryPhotos.length >= 2 && (
+                    <span className="text-xs text-gray-300">
+                      {isExpanded ? "▲" : "▼"}
+                    </span>
+                  )}
                 </button>
-              </div>
-              <div className="p-3">
-                {editingId === photo.id ? (
-                  <select
-                    value={photo.activity}
-                    onChange={(e) =>
-                      handleActivityChange(
-                        photo.id,
-                        e.target.value as ActivityType
-                      )
-                    }
-                    onBlur={() => setEditingId(null)}
-                    autoFocus
-                    className="w-full text-xs p-1 border border-gray-200 rounded"
-                  >
-                    {ACTIVITY_TYPES.map((a) => (
-                      <option key={a} value={a}>
-                        {ACTIVITY_LABELS[a]}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
+
+                <div className="flex items-center gap-2">
+                  {/* Preview thumbnails (max 4) */}
+                  {!isExpanded && categoryPhotos.length > 0 && (
+                    <div className="flex -space-x-2">
+                      {categoryPhotos.slice(0, 4).map((p) => (
+                        <img
+                          key={p.id}
+                          src={p.thumbnailDataUrl}
+                          className="w-8 h-8 rounded-full border-2 border-white object-cover"
+                        />
+                      ))}
+                      {categoryPhotos.length > 4 && (
+                        <span className="w-8 h-8 rounded-full border-2 border-white bg-gray-100 flex items-center justify-center text-[10px] text-gray-500">
+                          +{categoryPhotos.length - 4}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Add button */}
                   <button
-                    onClick={() => setEditingId(photo.id)}
-                    className="text-xs text-gray-500 hover:text-orange-500 transition"
+                    onClick={() => fileInputRefs.current[activity]?.click()}
+                    disabled={isProcessing}
+                    className="text-xs bg-orange-100 text-orange-600 px-3 py-1.5 rounded-lg hover:bg-orange-200 transition disabled:opacity-50"
                   >
-                    {ACTIVITY_LABELS[photo.activity]}
-                    {photo.userCorrected && " (수정됨)"}
-                    {" ✎"}
+                    + 추가
                   </button>
-                )}
+                  <input
+                    ref={(el) => {
+                      fileInputRefs.current[activity] = el;
+                    }}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => handleAddPhotos(activity, e)}
+                    className="hidden"
+                  />
+                </div>
               </div>
+
+              {/* Expanded photo grid */}
+              {isExpanded && categoryPhotos.length > 0 && (
+                <div className="px-4 pb-4">
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+                    {categoryPhotos.map((photo) => (
+                      <div key={photo.id} className="relative group">
+                        <img
+                          src={photo.cutoutDataUrl}
+                          alt=""
+                          className="w-full aspect-square object-cover rounded-lg"
+                        />
+                        <button
+                          onClick={() => handleDelete(photo.id)}
+                          className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-[10px] opacity-0 group-hover:opacity-100 transition flex items-center justify-center shadow"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Empty state */}
+              {isExpanded && categoryPhotos.length === 0 && (
+                <div className="px-4 pb-4">
+                  <p className="text-xs text-gray-300 text-center py-4">
+                    아직 사진이 없어요
+                  </p>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
     </div>
   );
 }
