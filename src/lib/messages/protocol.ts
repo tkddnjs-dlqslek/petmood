@@ -11,7 +11,7 @@ import type {
 export type ProcessPhotoMessage = {
   type: "PROCESS_PHOTO";
   payload: {
-    imageArrayBuffer: ArrayBuffer;
+    imageDataUrl: string; // data:image/... string (ArrayBuffer can't survive message passing)
     fileName: string;
   };
 };
@@ -40,7 +40,7 @@ export type DeletePhotoMessage = {
 export type RunInferenceMessage = {
   type: "RUN_INFERENCE";
   payload: {
-    imageArrayBuffer: ArrayBuffer;
+    imageDataUrl: string;
   };
 };
 

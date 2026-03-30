@@ -73,7 +73,7 @@ let classifier: ZeroShotImageClassificationPipeline | null = null;
 chrome.runtime.onMessage.addListener(
   (message: PetMoodMessage, _sender, sendResponse) => {
     if (message.type === "RUN_INFERENCE") {
-      handleInference(message.payload.imageArrayBuffer)
+      handleInference(message.payload.imageDataUrl)
         .then(sendResponse)
         .catch((err) => {
           console.error("[PetMood Offscreen] Inference error:", err);
@@ -84,29 +84,26 @@ chrome.runtime.onMessage.addListener(
   }
 );
 
-async function handleInference(imageArrayBuffer: ArrayBuffer): Promise<{
+async function handleInference(imageDataUrl: string): Promise<{
   cutoutDataUrl: string;
   classification: ClassificationResult;
 }> {
-  const imageBlob = new Blob([imageArrayBuffer], { type: "image/png" });
-  const imageUrl = URL.createObjectURL(imageBlob);
+  // Convert data URL to Blob for processing
+  const response = await fetch(imageDataUrl);
+  const imageBlob = await response.blob();
 
-  try {
-    // Step 1: Background removal
-    reportProgress("bg-removal", 0, "배경 제거 중...");
-    const cutoutDataUrl = await removeBackground(imageBlob);
-    reportProgress("bg-removal", 100, "배경 제거 완료!");
+  // Step 1: Background removal
+  reportProgress("bg-removal", 0, "배경 제거 중...");
+  const cutoutDataUrl = await removeBackground(imageBlob);
+  reportProgress("bg-removal", 100, "배경 제거 완료!");
 
-    // Step 2: Classification (use original image for better context)
-    reportProgress("classifying", 0, "행동 분류 중...");
-    const classification = await classifyActivity(imageUrl);
-    reportProgress("classifying", 100, "분류 완료!");
+  // Step 2: Classification (use original image data URL for context)
+  reportProgress("classifying", 0, "행동 분류 중...");
+  const classification = await classifyActivity(imageDataUrl);
+  reportProgress("classifying", 100, "분류 완료!");
 
-    reportProgress("done", 100, "처리 완료!");
-    return { cutoutDataUrl, classification };
-  } finally {
-    URL.revokeObjectURL(imageUrl);
-  }
+  reportProgress("done", 100, "처리 완료!");
+  return { cutoutDataUrl, classification };
 }
 
 // ===== Background Removal (briaai/RMBG-1.4 via transformers.js) =====

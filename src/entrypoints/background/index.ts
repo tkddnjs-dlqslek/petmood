@@ -74,17 +74,17 @@ export default defineBackground(() => {
 
   // ===== Photo Processing =====
   async function processPhoto(payload: {
-    imageArrayBuffer: ArrayBuffer;
+    imageDataUrl: string;
     fileName: string;
   }): Promise<unknown> {
     try {
       // Ensure offscreen document exists
       await ensureOffscreen();
 
-      // Send to offscreen for inference
+      // Send to offscreen for inference (data URL string survives message passing)
       const response = await chrome.runtime.sendMessage({
         type: "RUN_INFERENCE",
-        payload: { imageArrayBuffer: payload.imageArrayBuffer },
+        payload: { imageDataUrl: payload.imageDataUrl },
       });
 
       return response;

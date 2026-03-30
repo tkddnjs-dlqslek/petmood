@@ -38,20 +38,21 @@ export default function PhotoManager() {
     }
     const filesToProcess = files.slice(0, remaining);
     for (const file of filesToProcess) {
+      const imageDataUrl = await fileToDataUrl(file);
       const thumbnailDataUrl = await createThumbnail(file);
-      const arrayBuffer = await file.arrayBuffer();
 
       // Send to Service Worker → Offscreen Document for AI processing
       const result: any = await sendToBackground({
         type: "PROCESS_PHOTO",
-        payload: { imageArrayBuffer: arrayBuffer, fileName: file.name },
+        payload: { imageDataUrl, fileName: file.name },
       });
 
-      const cutoutDataUrl = result?.cutoutDataUrl ?? await fileToDataUrl(file);
+      const cutoutDataUrl = result?.cutoutDataUrl ?? imageDataUrl;
       const activity = result?.classification?.activity ??
         ACTIVITY_TYPES[Math.floor(Math.random() * ACTIVITY_TYPES.length)];
       const confidence = result?.classification?.confidence ?? 0.5;
 
+      const arrayBuffer = await file.arrayBuffer();
       const photo: StoredPhoto = {
         id: crypto.randomUUID(),
         originalBlob: new Blob([arrayBuffer]),
