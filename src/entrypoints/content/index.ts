@@ -104,11 +104,16 @@ export default defineContentScript({
       // Animation state
       let x = -150;
       const screenW = window.innerWidth;
-      const speed = 3;
-      let angle = 0;
+      const speed = 5; // faster
+      let stepCount = 0;
       let caught = false;
       let frame: number;
-      const baseY = window.innerHeight * 0.6;
+      const baseY = window.innerHeight * 0.55;
+      // Zigzag: 사선 45도 구간 (올라가기 / 내려가기 반복)
+      let goingUp = true;
+      let zigzagY = 0;
+      const zigzagRange = 80; // 위아래 이동 범위
+      const zigzagSpeed = 3; // Y축 이동 속도
 
       runner.style.pointerEvents = "auto";
       runner.style.cursor = "pointer";
@@ -118,11 +123,13 @@ export default defineContentScript({
         if (caught) return;
         caught = true;
 
-        // Change bubble text to "아이고고..."
         const bubble = runner.querySelector(".petmood-run-bubble p");
         if (bubble) bubble.textContent = "아이고고... 잡혔다...";
 
-        // Stop and fade out
+        // Pet stops and shrinks down
+        const pet = runner.querySelector(".petmood-run-pet") as HTMLElement;
+        if (pet) pet.style.transition = "transform 0.3s";
+
         runner.style.transition = "opacity 1.5s ease-out";
         setTimeout(() => {
           runner.style.opacity = "0";
@@ -130,16 +137,25 @@ export default defineContentScript({
         }, 800);
       });
 
-      // Zigzag movement (사선 이동)
+      // Running movement (발발발발 뛰는 느낌)
       function animate() {
         if (caught) return;
 
         x += speed;
-        angle += 0.04;
+        stepCount++;
 
-        // Zigzag: 사선 위/아래 반복 (45도 느낌)
-        const zigzagY = Math.sin(angle) * 60;
-        const currentY = baseY + zigzagY;
+        // Zigzag: 사선 올라가기 / 내려가기 반복
+        if (goingUp) {
+          zigzagY -= zigzagSpeed;
+          if (zigzagY <= -zigzagRange) goingUp = false;
+        } else {
+          zigzagY += zigzagSpeed;
+          if (zigzagY >= zigzagRange) goingUp = true;
+        }
+
+        // 발발발발 효과: 2-3px 미세 바운스 (매 프레임 위아래)
+        const microBounce = stepCount % 4 < 2 ? -3 : 0;
+        const currentY = baseY + zigzagY + microBounce;
 
         runner.style.left = `${x}px`;
         runner.style.top = `${currentY}px`;
@@ -262,8 +278,8 @@ export default defineContentScript({
         }
 
         .petmood-run-pet {
-          width: 100px;
-          height: 100px;
+          width: 120px;
+          height: 120px;
           object-fit: contain;
           filter: drop-shadow(0 2px 6px rgba(0,0,0,0.15));
         }
