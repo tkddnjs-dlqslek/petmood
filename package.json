@@ -1,0 +1,35 @@
+{
+  "name": "petmood",
+  "version": "0.1.0",
+  "description": "PetMood - 반려동물 웰니스 크롬 익스텐션",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
+    "@imgly/background-removal": "^1.7.0",
+    "@wxt-dev/module-react": "^1.2.2",
+    "idb": "^8.0.3",
+    "onnxruntime-web": "^1.21.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/chrome": "^0.1.38",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^6.0.2",
+    "wxt": "^0.20.20"
+  }
+}
