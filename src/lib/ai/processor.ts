@@ -6,8 +6,14 @@ import {
 } from "@huggingface/transformers";
 import type { ClassificationResult, ActivityType } from "../../types";
 
+// Configure transformers.js for Chrome Extension environment
 env.allowRemoteModels = true;
 env.useBrowserCache = true;
+// CRITICAL: Prevent transformers.js from loading ONNX Runtime from CDN.
+// Chrome Extension CSP blocks external scripts.
+// WASM file is copied to public/ (no hash) and served from extension root.
+env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL("/");
+env.allowLocalModels = false;
 
 // 6 classes with prompt ensembling
 const ACTIVITY_PROMPTS: Record<ActivityType, string[]> = {
