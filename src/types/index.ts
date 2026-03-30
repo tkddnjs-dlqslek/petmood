@@ -22,7 +22,7 @@ export type NotificationPosition =
   | "bottom-right"
   | "bottom-left";
 
-export type DisplayType = "card" | "running";
+export type DisplayType = "bounce" | "peek" | "running" | "float" | "wobble" | "spin";
 
 // ===== Storage Types =====
 export interface PetMoodSettings {

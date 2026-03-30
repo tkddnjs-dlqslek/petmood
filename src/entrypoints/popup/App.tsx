@@ -1,18 +1,25 @@
 import { useState, useEffect } from "react";
 import { settingsStore } from "../../lib/storage/settings-store";
 import { photoDB } from "../../lib/storage/photo-db";
-import { sendToBackground } from "../../lib/messages/protocol";
 import {
   selectMessage,
   getTimeContext,
-  suggestActivity,
 } from "../../lib/templates/selector";
-import type { PetMoodSettings } from "../../types";
+import type { PetMoodSettings, DisplayType } from "../../types";
+
+const ANIM_TESTS: { type: DisplayType; label: string; emoji: string }[] = [
+  { type: "bounce", label: "통통 점프", emoji: "😊" },
+  { type: "peek", label: "쏙 올라오기", emoji: "🍽️" },
+  { type: "running", label: "달리기", emoji: "🏃" },
+  { type: "float", label: "둥둥 떠다님", emoji: "😴" },
+  { type: "wobble", label: "흔들흔들", emoji: "😢" },
+  { type: "spin", label: "빙글 등장", emoji: "😠" },
+];
 
 export default function App() {
   const [settings, setSettings] = useState<PetMoodSettings | null>(null);
   const [photoCount, setPhotoCount] = useState(0);
-  const [testSending, setTestSending] = useState(false);
+  const [sending, setSending] = useState<string | null>(null);
 
   useEffect(() => {
     settingsStore.get().then(setSettings);
@@ -23,13 +30,13 @@ export default function App() {
 
   if (!settings) {
     return (
-      <div className="w-[300px] p-4 text-center text-gray-400">로딩 중...</div>
+      <div className="w-[320px] p-4 text-center text-gray-400">로딩 중...</div>
     );
   }
 
   if (!settings.onboardingCompleted) {
     return (
-      <div className="w-[300px] p-6 text-center">
+      <div className="w-[320px] p-6 text-center">
         <h2 className="text-lg font-bold mb-2">PetMood</h2>
         <p className="text-sm text-gray-500 mb-4">
           반려동물 사진을 등록하고 시작하세요!
@@ -44,30 +51,19 @@ export default function App() {
     );
   }
 
-  const handleToggle = async () => {
-    const newEnabled = !settings.isEnabled;
-    await settingsStore.set({ isEnabled: newEnabled });
-  };
-
-  const handleTestNotification = async () => {
-    if (testSending) return;
-    setTestSending(true);
+  const handleTestAnimation = async (displayType: DisplayType) => {
+    if (sending) return;
+    setSending(displayType);
 
     try {
-      const hour = new Date().getHours();
-      const timeCtx = getTimeContext(hour);
-      const activity = suggestActivity(timeCtx, "timer");
-
-      // Try to get a photo matching the activity, fallback to any
-      let photo = await photoDB.getRandomPhoto(activity);
-      if (!photo) photo = await photoDB.getRandomPhoto();
-
+      const photo = await photoDB.getRandomPhoto();
       if (!photo) {
         alert("사진을 먼저 등록해주세요!");
         return;
       }
 
-      const { id, text } = selectMessage({
+      const hour = new Date().getHours();
+      const { text } = selectMessage({
         activity: photo.activity,
         triggerType: "timer",
         currentHour: hour,
@@ -76,21 +72,13 @@ export default function App() {
         recentMessageIds: [],
       });
 
-      // Decide display type
-      const displayType =
-        photo.activity === "running" &&
-        Math.random() > 0.5
-          ? "running"
-          : "card";
-
-      // Send to active tab
       const [tab] = await chrome.tabs.query({
         active: true,
         currentWindow: true,
       });
 
       if (!tab?.id) {
-        alert("알림을 표시할 탭이 없어요. 웹페이지를 열어주세요!");
+        alert("웹페이지를 열어주세요!");
         return;
       }
 
@@ -105,17 +93,21 @@ export default function App() {
         },
       });
     } catch (err) {
-      console.error("Test notification error:", err);
+      console.error("Test error:", err);
       alert("알림 전송 실패. 웹페이지에서 다시 시도해주세요.");
     } finally {
-      setTestSending(false);
+      setSending(null);
     }
   };
 
+  const handleToggle = async () => {
+    await settingsStore.set({ isEnabled: !settings.isEnabled });
+  };
+
   return (
-    <div className="w-[300px] p-4">
+    <div className="w-[320px] p-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <div>
           <h2 className="text-lg font-bold">PetMood</h2>
           <p className="text-xs text-gray-400">
@@ -138,39 +130,38 @@ export default function App() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-2 mb-3">
-        <div className="bg-gray-50 rounded-lg p-3 text-center">
-          <p className="text-2xl font-bold text-orange-500">{photoCount}</p>
-          <p className="text-xs text-gray-500">등록된 사진</p>
+        <div className="bg-gray-50 rounded-lg p-2 text-center">
+          <p className="text-xl font-bold text-orange-500">{photoCount}</p>
+          <p className="text-[10px] text-gray-500">등록된 사진</p>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3 text-center">
-          <p className="text-2xl font-bold text-orange-500">
+        <div className="bg-gray-50 rounded-lg p-2 text-center">
+          <p className="text-xl font-bold text-orange-500">
             {settings.totalNotificationsShown}
           </p>
-          <p className="text-xs text-gray-500">알림 횟수</p>
+          <p className="text-[10px] text-gray-500">알림 횟수</p>
         </div>
       </div>
 
-      {/* Test Notification Button */}
-      <button
-        onClick={handleTestNotification}
-        disabled={testSending}
-        className="w-full bg-orange-500 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-orange-600 transition disabled:bg-orange-300 mb-2"
-      >
-        {testSending ? "보내는 중..." : "테스트 알림 보내기"}
-      </button>
-
-      {/* Quick Info */}
-      <div className="text-xs text-gray-400 mb-3">
-        {settings.triggers.timer.enabled && (
-          <p>
-            타이머: {settings.triggers.timer.intervalMinutes}분마다
-          </p>
-        )}
-        {settings.triggers.browseDuration.enabled && (
-          <p>
-            브라우징: {settings.triggers.browseDuration.thresholdMinutes}분 후
-          </p>
-        )}
+      {/* Animation Test Buttons */}
+      <div className="mb-3">
+        <p className="text-xs text-gray-400 mb-2">애니메이션 테스트</p>
+        <div className="grid grid-cols-3 gap-1.5">
+          {ANIM_TESTS.map(({ type, label, emoji }) => (
+            <button
+              key={type}
+              onClick={() => handleTestAnimation(type)}
+              disabled={!!sending}
+              className={`flex flex-col items-center py-2 px-1 rounded-lg text-[11px] transition border ${
+                sending === type
+                  ? "bg-orange-100 border-orange-300"
+                  : "bg-white border-gray-200 hover:border-orange-300 hover:bg-orange-50"
+              } disabled:opacity-50`}
+            >
+              <span className="text-lg mb-0.5">{emoji}</span>
+              <span className="text-gray-600">{label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Settings Link */}
