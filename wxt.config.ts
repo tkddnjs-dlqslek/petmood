@@ -25,5 +25,14 @@ export default defineConfig({
       extension_pages:
         "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
     },
+    web_accessible_resources: [
+      {
+        resources: [
+          "ort-wasm-simd-threaded.jsep.wasm",
+          "ort-wasm-simd-threaded.jsep.mjs",
+        ],
+        matches: ["<all_urls>"],
+      },
+    ],
   },
 });
