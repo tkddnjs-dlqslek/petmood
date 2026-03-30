@@ -31,9 +31,17 @@ export default function PhotoManager() {
     setPhotos(all.reverse()); // Newest first
   };
 
+  const MAX_TOTAL_PHOTOS = 100;
+
   const handleAddPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
-    for (const file of files) {
+    const remaining = MAX_TOTAL_PHOTOS - photos.length;
+    if (remaining <= 0) {
+      alert("사진은 최대 100장까지 등록할 수 있어요!");
+      return;
+    }
+    const filesToProcess = files.slice(0, remaining);
+    for (const file of filesToProcess) {
       const thumbnailDataUrl = await createThumbnail(file);
       const arrayBuffer = await file.arrayBuffer();
 
