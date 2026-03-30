@@ -1,15 +1,12 @@
 import {
   pipeline,
   env,
-  RawImage,
-  type ImageSegmentationPipeline,
   type ZeroShotImageClassificationPipeline,
 } from "@huggingface/transformers";
 import type { ClassificationResult, ActivityType } from "../../types";
 
 // ===== AI Processor =====
-// Runs directly in Options Page (has full DOM + Canvas access).
-// No need for offscreen document or message passing.
+// Runs directly in Options Page.
 
 env.allowRemoteModels = true;
 env.useBrowserCache = true;
@@ -61,7 +58,7 @@ for (const [activity, prompts] of Object.entries(ACTIVITY_PROMPTS)) {
   }
 }
 
-let segmenter: ImageSegmentationPipeline | null = null;
+let bgRemover: any = null;
 let classifier: ZeroShotImageClassificationPipeline | null = null;
 
 // ===== Public API =====
@@ -72,81 +69,79 @@ export async function processPhoto(
 ): Promise<{
   cutoutDataUrl: string;
   classification: ClassificationResult;
+  errors: string[];
 }> {
   const log = onProgress ?? console.log;
-
-  // Convert data URL to Blob
-  const response = await fetch(imageDataUrl);
-  const imageBlob = await response.blob();
+  const errors: string[] = [];
 
   // Step 1: Background removal
-  log("배경 제거 중...");
-  const cutoutDataUrl = await removeBackground(imageBlob, log);
+  let cutoutDataUrl = imageDataUrl; // fallback = original
+  try {
+    log("배경 제거 모델 준비 중...");
+    cutoutDataUrl = await removeBackground(imageDataUrl, log);
+    log("배경 제거 완료!");
+  } catch (err: any) {
+    const errMsg = `누끼 실패: ${err?.message ?? err}`;
+    console.error("[PetMood]", errMsg, err);
+    errors.push(errMsg);
+    log(`배경 제거 실패 — 원본 사용 (${errMsg})`);
+  }
 
   // Step 2: Classification
-  log("행동 분류 중...");
-  const classification = await classifyActivity(imageDataUrl, log);
+  let classification: ClassificationResult = {
+    activity: "alert",
+    confidence: 0,
+    allScores: {} as any,
+  };
+  try {
+    log("분류 모델 준비 중...");
+    classification = await classifyActivity(imageDataUrl, log);
+    log(`분류 완료: ${classification.activity} (${(classification.confidence * 100).toFixed(0)}%)`);
+  } catch (err: any) {
+    const errMsg = `분류 실패: ${err?.message ?? err}`;
+    console.error("[PetMood]", errMsg, err);
+    errors.push(errMsg);
+    log(`분류 실패 — 기본값 사용 (${errMsg})`);
+  }
 
-  log("처리 완료!");
-  return { cutoutDataUrl, classification };
+  return { cutoutDataUrl, classification, errors };
 }
 
 // ===== Background Removal =====
+// Use "background-removal" task (transformers.js v3.4+)
+// Returns RawImage with transparency already applied
 
 async function removeBackground(
-  imageBlob: Blob,
+  imageDataUrl: string,
   log: (msg: string) => void
 ): Promise<string> {
-  try {
-    if (!segmenter) {
-      log("배경 제거 모델 다운로드 중... (최초 1회, ~45MB)");
-      segmenter = (await pipeline("image-segmentation", "briaai/RMBG-1.4", {
-        device: "wasm",
-      })) as ImageSegmentationPipeline;
-      log("배경 제거 모델 준비 완료!");
-    }
-
-    const image = await RawImage.fromBlob(imageBlob);
-    log("배경 분석 중...");
-
-    const results = await segmenter(image as any);
-
-    if (!results || results.length === 0) {
-      console.warn("[PetMood] No segmentation results");
-      return blobToDataUrl(imageBlob);
-    }
-
-    // Apply mask to create transparent PNG
-    const mask = results[0].mask;
-    const canvas = document.createElement("canvas");
-    canvas.width = image.width;
-    canvas.height = image.height;
-    const ctx = canvas.getContext("2d")!;
-
-    // Draw original image
-    const img = new Image();
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = reject;
-      img.src = URL.createObjectURL(imageBlob);
+  if (!bgRemover) {
+    log("배경 제거 모델 다운로드 중... (최초 1회, ~45MB)");
+    bgRemover = await pipeline("background-removal", "briaai/RMBG-1.4", {
+      device: "wasm",
     });
-    ctx.drawImage(img, 0, 0, image.width, image.height);
-    URL.revokeObjectURL(img.src);
-
-    // Apply mask to alpha channel
-    const pixelData = ctx.getImageData(0, 0, image.width, image.height);
-    const maskData = mask.data;
-
-    for (let i = 0; i < maskData.length; i++) {
-      pixelData.data[4 * i + 3] = maskData[i];
-    }
-
-    ctx.putImageData(pixelData, 0, 0);
-    return canvas.toDataURL("image/png");
-  } catch (err) {
-    console.error("[PetMood] Background removal failed:", err);
-    return blobToDataUrl(imageBlob);
+    log("배경 제거 모델 준비 완료!");
   }
+
+  log("배경 분석 중...");
+  const output = await bgRemover(imageDataUrl);
+
+  // output is a RawImage — convert to data URL via canvas
+  const rawImage = output;
+  const canvas = document.createElement("canvas");
+  canvas.width = rawImage.width;
+  canvas.height = rawImage.height;
+  const ctx = canvas.getContext("2d")!;
+
+  // RawImage has .toCanvas() or we can use ImageData
+  const imageData = new ImageData(
+    new Uint8ClampedArray(rawImage.data),
+    rawImage.width,
+    rawImage.height
+  );
+  ctx.putImageData(imageData, 0, 0);
+
+  return canvas.toDataURL("image/png");
 }
 
 // ===== Classification =====
@@ -155,55 +150,39 @@ async function classifyActivity(
   imageDataUrl: string,
   log: (msg: string) => void
 ): Promise<ClassificationResult> {
-  try {
-    if (!classifier) {
-      log("분류 모델 다운로드 중... (최초 1회, ~350MB)");
-      classifier = (await pipeline(
-        "zero-shot-image-classification",
-        "Xenova/siglip-base-patch16-224",
-        { device: "wasm" }
-      )) as ZeroShotImageClassificationPipeline;
-      log("분류 모델 준비 완료!");
-    }
-
-    const results = await classifier(imageDataUrl, FLAT_LABELS);
-
-    // Aggregate via prompt ensembling
-    const activityScores: Record<string, number[]> = {};
-    for (const result of results) {
-      const activity = LABEL_TO_ACTIVITY.get(result.label);
-      if (!activity) continue;
-      if (!activityScores[activity]) activityScores[activity] = [];
-      activityScores[activity].push(result.score);
-    }
-
-    const allScores = {} as Record<ActivityType, number>;
-    let bestActivity: ActivityType = "alert";
-    let bestScore = 0;
-
-    for (const [activity, scores] of Object.entries(activityScores)) {
-      const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-      allScores[activity as ActivityType] = avg;
-      if (avg > bestScore) {
-        bestScore = avg;
-        bestActivity = activity as ActivityType;
-      }
-    }
-
-    return { activity: bestActivity, confidence: bestScore, allScores };
-  } catch (err) {
-    console.error("[PetMood] Classification failed:", err);
-    return { activity: "alert", confidence: 0, allScores: {} as any };
+  if (!classifier) {
+    log("분류 모델 다운로드 중... (최초 1회)");
+    classifier = (await pipeline(
+      "zero-shot-image-classification",
+      "Xenova/clip-vit-base-patch32",
+      { device: "wasm" }
+    )) as ZeroShotImageClassificationPipeline;
+    log("분류 모델 준비 완료!");
   }
-}
 
-// ===== Utility =====
+  const results = await classifier(imageDataUrl, FLAT_LABELS);
 
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+  // Aggregate via prompt ensembling
+  const activityScores: Record<string, number[]> = {};
+  for (const result of results) {
+    const activity = LABEL_TO_ACTIVITY.get(result.label);
+    if (!activity) continue;
+    if (!activityScores[activity]) activityScores[activity] = [];
+    activityScores[activity].push(result.score);
+  }
+
+  const allScores = {} as Record<ActivityType, number>;
+  let bestActivity: ActivityType = "alert";
+  let bestScore = 0;
+
+  for (const [activity, scores] of Object.entries(activityScores)) {
+    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+    allScores[activity as ActivityType] = avg;
+    if (avg > bestScore) {
+      bestScore = avg;
+      bestActivity = activity as ActivityType;
+    }
+  }
+
+  return { activity: bestActivity, confidence: bestScore, allScores };
 }

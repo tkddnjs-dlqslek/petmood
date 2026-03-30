@@ -57,6 +57,12 @@ export default function OnboardingPage() {
           setProgress(`사진 ${i + 1}/${files.length}: ${msg}`)
         );
 
+        // Show errors if any
+        if (result.errors.length > 0) {
+          console.warn("[PetMood] Errors:", result.errors);
+          setProgress(`사진 ${i + 1}: ${result.errors.join(", ")}`);
+        }
+
         const cutoutDataUrl = result.cutoutDataUrl;
         const activity = result.classification.activity;
         const confidence = result.classification.confidence;
