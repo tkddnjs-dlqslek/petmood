@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Heavy Bubble — Final Spacing</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #f5f5f5;
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    gap: 10px;
+  }
+  .label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #999;
+    margin-bottom: 20px;
+  }
+  .wobbly-filter { position: absolute; width: 0; height: 0; }
+
+  .scene {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* ── Heavy 말풍선 ── */
+  .bubble {
+    position: relative;
+    background: #fff;
+    padding: 12px 20px;
+    font-size: 14px; color: #111; font-weight: 700;
+    letter-spacing: -0.2px; line-height: 1.5;
+    max-width: 220px;
+    border: 3.5px solid #111;
+    border-radius: 38% 48% 42% 52% / 52% 38% 48% 42%;
+    filter: url(#w1);
+    box-shadow: 5px 5px 0px #111;
+    transform: rotate(-1.5deg);
+    margin-bottom: 46px;
+  }
+
+  .bubble .d1, .bubble .d2 {
+    position: absolute;
+    background: #fff;
+    border: 3.5px solid #111;
+    filter: url(#w1);
+    box-shadow: 3px 3px 0px #111;
+  }
+
+  /* 점 꼬리: 넓게 + 강아지 위에 뜨도록 */
+  .bubble .d1 {
+    width: 17px; height: 14px;
+    bottom: -26px; left: 36%;
+    border-radius: 55% 45% 50% 50%;
+  }
+  .bubble .d2 {
+    width: 11px; height: 10px;
+    bottom: -44px; left: 41%;
+    border-radius: 50%;
+  }
+
+  .pet-img {
+    width: 120px;
+    height: 120px;
+    object-fit: contain;
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15));
+  }
+</style>
+</head>
+<body>
+
+<svg class="wobbly-filter">
+  <defs>
+    <filter id="w1">
+      <feTurbulence type="turbulence" baseFrequency="0.015" numOctaves="3" seed="2" result="n" />
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="3" xChannelSelector="R" yChannelSelector="G" />
+    </filter>
+  </defs>
+</svg>
+
+<div class="label">C. 넓게 — 강아지와 안 겹치게</div>
+
+<div class="scene">
+  <div class="bubble">
+    Catch me if you can!
+    <div class="d1"></div>
+    <div class="d2"></div>
+  </div>
+  <img class="pet-img" src="running_nobg.png" />
+</div>
+
+</body>
+</html>

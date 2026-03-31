@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>달리기 애니메이션 미리보기</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #f5f5f5;
+      font-family: -apple-system, 'Segoe UI', sans-serif;
+      overflow: hidden;
+      height: 100vh;
+      user-select: none;
+    }
+
+    .wobbly-filter { position: absolute; width: 0; height: 0; }
+
+    /* ── 강아지 컨테이너 ── */
+    .runner {
+      position: fixed;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      will-change: transform;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+
+    /* ── Heavy 말풍선 (구불구불 + 만화 그림자) ── */
+    .bubble {
+      position: relative;
+      background: #fff;
+      padding: 12px 20px;
+      font-size: 14px;
+      color: #111;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+      line-height: 1.5;
+      max-width: 220px;
+      white-space: nowrap;
+      border: 3.5px solid #111;
+      border-radius: 38% 48% 42% 52% / 52% 38% 48% 42%;
+      filter: url(#w1);
+      box-shadow: 5px 5px 0px #111;
+      transform: rotate(-1.5deg);
+      /* 말풍선 → 점 꼬리 → 강아지 사이 간격 확보 */
+      margin-bottom: 46px;
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+    .bubble.show {
+      opacity: 1;
+    }
+
+    /* 점 꼬리 (넓은 간격) */
+    .bubble .d1, .bubble .d2 {
+      position: absolute;
+      background: #fff;
+      border: 3.5px solid #111;
+      filter: url(#w1);
+      box-shadow: 3px 3px 0px #111;
+    }
+    .bubble .d1 {
+      width: 17px; height: 14px;
+      bottom: -26px; left: 36%;
+      border-radius: 55% 45% 50% 50%;
+    }
+    .bubble .d2 {
+      width: 11px; height: 10px;
+      bottom: -44px; left: 41%;
+      border-radius: 50%;
+    }
+
+    /* ── 강아지 이미지 ── */
+    .pet-wrap {
+      position: relative;
+    }
+
+    .pet {
+      width: 120px;
+      height: 120px;
+      object-fit: contain;
+      filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15));
+    }
+
+    /* 바닥 그림자 */
+    .floor-shadow {
+      width: 70px;
+      height: 12px;
+      background: radial-gradient(ellipse, rgba(0,0,0,0.12) 0%, transparent 70%);
+      border-radius: 50%;
+      margin-top: -4px;
+    }
+
+    /* 잡혔을 때 흔들림 */
+    .caught .pet {
+      animation: caughtShake 0.4s ease-in-out;
+    }
+    @keyframes caughtShake {
+      0%, 100% { transform: rotate(0deg); }
+      20% { transform: rotate(-8deg); }
+      40% { transform: rotate(8deg); }
+      60% { transform: rotate(-4deg); }
+      80% { transform: rotate(4deg); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- SVG 구불구불 필터 -->
+<svg class="wobbly-filter">
+  <defs>
+    <filter id="w1">
+      <feTurbulence type="turbulence" baseFrequency="0.015" numOctaves="3" seed="2" result="n" />
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="3" xChannelSelector="R" yChannelSelector="G" />
+    </filter>
+  </defs>
+</svg>
+
+<script>
+// ── 대사 목록 ──
+const dialogues = {
+  running: [
+    "Catch me if you can!",
+    "Hey, what are you doing?",
+    "I'm full of energy right now!",
+    "Stop scrolling and look at me!",
+    "Come here! Let's play!",
+    "Pay attention to me.",
+    "Turn off the screen and run with me!",
+    "Why am I running? No reason. Just vibes.",
+    "Can't sit still. That's just who I am!",
+    "I wanna run, you're lazy, I win."
+  ],
+  turn: [
+    "This way!",
+    "Gotcha!",
+    "Switching lanes~",
+    "Hehe, can't keep up?",
+    "Over here! Look!",
+    "Other side~!"
+  ],
+  caught: [
+    "Oh no... you got me...",
+    "Ugh, let me go...",
+    "Fine... you win today...",
+    "Next time I won't get caught!",
+    "Didn't know you were that fast..."
+  ],
+  escape: [
+    "Too slow! Bye~!",
+    "Hehe, couldn't catch me!",
+    "Maybe next time, human!",
+    "I'm outta here~!",
+    "See ya later!"
+  ]
+};
+
+function randomFrom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+// ── State ──
+let runner = null;
+let animFrame = null;
+let caught = false;
+const speed = 12;
+
+// Position & movement
+let x, y, vx;
+let bouncePhase = 0;
+let directionRight = true;
+let pauseTimer = 0;
+let state = 'running';
+
+// Trip counting
+let turnCount = 0;
+let maxTurns = 0; // 2~3 랜덤
+
+// Dialogue timer
+let dialogueTimer = 0;
+const DIALOGUE_INTERVAL = 150;
+
+function startRun() {
+  // Clean up
+  if (runner) runner.remove();
+  if (animFrame) cancelAnimationFrame(animFrame);
+  caught = false;
+  turnCount = 0;
+  maxTurns = Math.random() < 0.5 ? 4 : 6; // 왕복 2회(턴4) or 3회(턴6)
+
+  // Create DOM
+  runner = document.createElement('div');
+  runner.className = 'runner';
+  runner.innerHTML = `
+    <div class="bubble" id="bubble">
+      ${randomFrom(dialogues.running)}
+      <div class="d1"></div>
+      <div class="d2"></div>
+    </div>
+    <div class="pet-wrap">
+      <img class="pet" id="pet" src="running_nobg.png" />
+    </div>
+    <div class="floor-shadow" id="shadow"></div>
+  `;
+  document.body.appendChild(runner);
+
+  // Init position — 랜덤 방향
+  const screenW = window.innerWidth;
+  const screenH = window.innerHeight;
+  directionRight = Math.random() < 0.5;
+
+  if (directionRight) {
+    x = -160;
+  } else {
+    x = screenW + 40;
+  }
+
+  y = screenH * 0.4;
+  vx = directionRight ? speed : -speed;
+  bouncePhase = 0;
+  pauseTimer = 0;
+  state = 'running';
+  dialogueTimer = 0;
+
+  const pet = document.getElementById('pet');
+  const bubble = document.getElementById('bubble');
+  const shadow = document.getElementById('shadow');
+
+  // 시작 방향에 따른 이미지 반전
+  pet.style.transform = directionRight ? 'scaleX(1)' : 'scaleX(-1)';
+
+  // 초기 대사 표시
+  setTimeout(() => bubble.classList.add('show'), 300);
+  setTimeout(() => bubble.classList.remove('show'), 3000);
+
+  // Click → caught: 그 자리에서 멈춤
+  runner.addEventListener('click', () => {
+    if (caught) return;
+    caught = true;
+
+    // 대사 변경
+    bubble.textContent = randomFrom(dialogues.caught);
+    // 점 꼬리 다시 추가 (textContent가 자식 노드를 지우므로)
+    const d1 = document.createElement('div'); d1.className = 'd1';
+    const d2 = document.createElement('div'); d2.className = 'd2';
+    bubble.appendChild(d1);
+    bubble.appendChild(d2);
+    bubble.classList.add('show');
+    runner.classList.add('caught');
+
+    // 그 자리에서 멈추고 → 페이드아웃 → 리스타트
+    setTimeout(() => {
+      runner.style.transition = 'opacity 1s ease-out';
+      runner.style.opacity = '0';
+      setTimeout(() => {
+        runner.remove();
+        setTimeout(() => startRun(), 2000);
+      }, 1000);
+    }, 1500);
+  });
+
+  // ── 애니메이션 루프 ──
+  const turnZoneL = screenW * 0.08;
+  const turnZoneR = screenW * 0.82;
+
+  function animate() {
+    if (caught) return;
+
+    bouncePhase += speed * 0.028;
+    dialogueTimer++;
+
+    // ── 상태 머신 ──
+    if (state === 'running') {
+      if ((directionRight && x > turnZoneR) || (!directionRight && x < turnZoneL)) {
+        turnCount++;
+
+        // maxTurns 도달 → 화면 밖으로 도망
+        if (turnCount >= maxTurns) {
+          state = 'escaping';
+          bubble.textContent = randomFrom(dialogues.escape);
+          const d1 = document.createElement('div'); d1.className = 'd1';
+          const d2 = document.createElement('div'); d2.className = 'd2';
+          bubble.appendChild(d1);
+          bubble.appendChild(d2);
+          bubble.classList.add('show');
+        } else {
+          state = 'decelerating';
+        }
+      }
+      vx = directionRight ? speed : -speed;
+    }
+    else if (state === 'escaping') {
+      // 그대로 화면 밖으로 달림
+      vx = directionRight ? speed : -speed;
+      x += vx;
+
+      if (x > window.innerWidth + 200 || x < -200) {
+        // 사라짐 → 리스타트
+        runner.remove();
+        setTimeout(() => startRun(), 2000);
+        return;
+      }
+    }
+    else if (state === 'decelerating') {
+      vx *= 0.92;
+      if (Math.abs(vx) < 0.3) {
+        vx = 0;
+        state = 'pausing';
+        pauseTimer = 0;
+
+        bubble.textContent = randomFrom(dialogues.turn);
+        const d1 = document.createElement('div'); d1.className = 'd1';
+        const d2 = document.createElement('div'); d2.className = 'd2';
+        bubble.appendChild(d1);
+        bubble.appendChild(d2);
+        bubble.classList.add('show');
+        setTimeout(() => bubble.classList.remove('show'), 1800);
+      }
+    }
+    else if (state === 'pausing') {
+      pauseTimer++;
+      if (pauseTimer > 30) {
+        directionRight = !directionRight;
+        state = 'accelerating';
+        pet.style.transform = directionRight ? 'scaleX(1)' : 'scaleX(-1)';
+      }
+    }
+    else if (state === 'accelerating') {
+      const target = directionRight ? speed : -speed;
+      vx += (target - vx) * 0.06;
+      if (Math.abs(Math.abs(vx) - speed) < 0.2) {
+        state = 'running';
+      }
+    }
+
+    if (state !== 'escaping') {
+      x += vx;
+    }
+
+    // ── 바운스 물리 (탄성 바운스 고정) ──
+    let bounceY = 0;
+    let scaleY = 1;
+    let shadowScale = 1;
+
+    const absVx = Math.abs(vx);
+    const speedRatio = absVx / Math.max(speed, 0.1);
+
+    const t = bouncePhase % (Math.PI * 2);
+    const jump = (1 - Math.cos(t)) * 0.5;
+    bounceY = -jump * 32 * speedRatio;
+    scaleY = 1 - jump * 0.05;
+    shadowScale = 1 - jump * 0.4;
+
+    if (state === 'pausing') {
+      bounceY *= 0.1;
+      scaleY = 1;
+    }
+
+    // ── DOM 업데이트 ──
+    const flipX = directionRight ? 1 : -1;
+    runner.style.transform = `translate(${x}px, ${y + bounceY}px)`;
+    pet.style.transform = `scaleX(${flipX}) scaleY(${scaleY})`;
+    shadow.style.transform = `scaleX(${shadowScale * 0.9 + 0.1})`;
+    shadow.style.opacity = shadowScale * 0.8 + 0.2;
+
+    // ── 주기적 대사 ──
+    if (dialogueTimer > DIALOGUE_INTERVAL && state === 'running') {
+      dialogueTimer = 0;
+      bubble.textContent = randomFrom(dialogues.running);
+      const d1 = document.createElement('div'); d1.className = 'd1';
+      const d2 = document.createElement('div'); d2.className = 'd2';
+      bubble.appendChild(d1);
+      bubble.appendChild(d2);
+      bubble.classList.add('show');
+      setTimeout(() => bubble.classList.remove('show'), 2500);
+    }
+
+    animFrame = requestAnimationFrame(animate);
+  }
+
+  animFrame = requestAnimationFrame(animate);
+}
+
+// 시작
+startRun();
+</script>
+
+</body>
+</html>
