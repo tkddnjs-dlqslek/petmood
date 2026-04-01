@@ -40,6 +40,9 @@ const DEFAULT_SETTINGS: PetMoodSettings = {
     bgRemoverReady: false,
   },
 
+  customMessages: {},
+  messageMode: "mix",
+
   lastNotificationTimestamp: 0,
   browsingStartTimestamp: Date.now(),
   totalNotificationsShown: 0,

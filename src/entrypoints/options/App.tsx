@@ -4,8 +4,9 @@ import type { PetMoodSettings } from "../../types";
 import OnboardingPage from "./pages/OnboardingPage";
 import PhotoManager from "./pages/PhotoManager";
 import TriggerSettings from "./pages/TriggerSettings";
+import MessageSettings from "./pages/MessageSettings";
 
-type Tab = "photos" | "triggers" | "display";
+type Tab = "photos" | "messages" | "triggers" | "display";
 
 export default function App() {
   const [settings, setSettings] = useState<PetMoodSettings | null>(null);
@@ -31,6 +32,7 @@ export default function App() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "photos", label: "Photos" },
+    { key: "messages", label: "Messages" },
     { key: "triggers", label: "Notifications" },
     { key: "display", label: "Display" },
   ];
@@ -85,6 +87,7 @@ export default function App() {
       </header>
       <main className="max-w-2xl mx-auto px-6 py-6">
         {activeTab === "photos" && <PhotoManager />}
+        {activeTab === "messages" && <MessageSettings settings={settings} />}
         {activeTab === "triggers" && <TriggerSettings settings={settings} />}
         {activeTab === "display" && <DisplaySettings settings={settings} />}
       </main>

@@ -65,6 +65,10 @@ export interface PetMoodSettings {
     bgRemoverReady: boolean;
   };
 
+  // Custom messages
+  customMessages: Record<string, string[]>; // e.g. { happy: ["msg1", "msg2"], ... }
+  messageMode: "mix" | "custom-only"; // mix = default + custom, custom-only = only user's
+
   lastNotificationTimestamp: number;
   browsingStartTimestamp: number;
   totalNotificationsShown: number;
