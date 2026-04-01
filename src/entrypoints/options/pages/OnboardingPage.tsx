@@ -6,12 +6,12 @@ import type { PetType, StoredPhoto, ActivityType } from "../../../types";
 import { ACTIVITY_TYPES } from "../../../types";
 
 const ACTIVITY_LABELS: Record<ActivityType, string> = {
-  happy: "웃는",
-  eating: "먹는",
-  running: "뛰는",
-  sleeping: "자는",
-  sad: "슬픔",
-  angry: "화남",
+  happy: "Happy",
+  eating: "Eating",
+  running: "Running",
+  sleeping: "Sleeping",
+  sad: "Sad",
+  angry: "Angry",
 };
 
 const ACTIVITY_EMOJI: Record<ActivityType, string> = {
@@ -89,7 +89,7 @@ export default function OnboardingPage() {
         for (const file of files) {
           count++;
           setProgress(
-            `${ACTIVITY_LABELS[activity]} ${count}/${totalFiles} 처리 중...`
+            `${ACTIVITY_LABELS[activity]} ${count}/${totalFiles} processing...`
           );
 
           const imageDataUrl = await fileToDataUrl(file);
@@ -136,7 +136,7 @@ export default function OnboardingPage() {
       setStep("done");
     } catch (error) {
       console.error("Processing error:", error);
-      setProgress(`오류 발생: ${error}`);
+      setProgress(`Error: ${error}`);
     } finally {
       setProcessing(false);
     }
@@ -149,40 +149,40 @@ export default function OnboardingPage() {
         {step === "profile" && (
           <div>
             <h1 className="text-2xl font-bold text-center mb-2">
-              PetMood에 오신 걸 환영해요!
+              Welcome to PetMood!
             </h1>
             <p className="text-sm text-gray-400 text-center mb-8">
-              당신과 반려동물의 정보를 알려주세요
+              Tell us about you and your pet
             </p>
 
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  내 이름
+                  My Name
                 </label>
                 <input
                   type="text"
                   value={userName}
                   onChange={(e) => setUserName(e.target.value)}
-                  placeholder="이름을 입력하세요"
+                  placeholder="Enter your name"
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-orange-400"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  반려동물 이름
+                  Pet Name
                 </label>
                 <input
                   type="text"
                   value={petName}
                   onChange={(e) => setPetName(e.target.value)}
-                  placeholder="반려동물 이름을 입력하세요"
+                  placeholder="Enter your pet's name"
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-orange-400"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  어떤 동물인가요?
+                  What kind of pet?
                 </label>
                 <div className="flex gap-3">
                   {(["dog", "cat"] as const).map((type) => (
@@ -195,7 +195,7 @@ export default function OnboardingPage() {
                           : "border-gray-200 text-gray-500 hover:border-gray-300"
                       }`}
                     >
-                      {type === "dog" ? "🐕 강아지" : "🐈 고양이"}
+                      {type === "dog" ? "🐕 Dog" : "🐈 Cat"}
                     </button>
                   ))}
                 </div>
@@ -206,7 +206,7 @@ export default function OnboardingPage() {
                 disabled={!userName.trim() || !petName.trim()}
                 className="w-full bg-orange-500 text-white py-3 rounded-xl font-medium text-sm hover:bg-orange-600 transition disabled:bg-gray-300 disabled:cursor-not-allowed mt-4"
               >
-                다음
+                Next
               </button>
             </div>
           </div>
@@ -216,13 +216,13 @@ export default function OnboardingPage() {
         {step === "upload" && (
           <div>
             <h1 className="text-xl font-bold text-center mb-2">
-              {petName}의 사진을 카테고리별로 올려주세요!
+              {petName}'s photos by category!
             </h1>
             <p className="text-sm text-gray-400 text-center mb-3">
-              각 감정/행동에 맞는 사진을 넣어주세요 (카테고리당 최대 10장)
+              Add photos for each emotion (max 10 per category)
             </p>
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-xs text-amber-700">
-              <strong>TIP:</strong> 반려동물이 크게 나온 사진이 좋아요! 배경이 단순할수록 누끼가 깔끔하게 따집니다.
+              <strong>TIP:</strong> Close-up photos work best! Simpler backgrounds give cleaner cutouts.
             </div>
 
             <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
@@ -239,7 +239,7 @@ export default function OnboardingPage() {
                       onClick={() => fileInputRefs.current[activity]?.click()}
                       className="text-xs bg-orange-100 text-orange-600 px-3 py-1 rounded-lg hover:bg-orange-200 transition"
                     >
-                      + 사진 추가
+                      + Add Photos
                     </button>
                     <input
                       ref={(el) => { fileInputRefs.current[activity] = el; }}
@@ -272,7 +272,7 @@ export default function OnboardingPage() {
                   )}
 
                   {categoryFiles[activity].length === 0 && (
-                    <p className="text-xs text-gray-300">아직 사진이 없어요</p>
+                    <p className="text-xs text-gray-300">No photos yet</p>
                   )}
                 </div>
               ))}
@@ -283,14 +283,14 @@ export default function OnboardingPage() {
                 onClick={() => setStep("profile")}
                 className="flex-1 py-3 rounded-xl border border-gray-200 text-sm text-gray-500 hover:bg-gray-50 transition"
               >
-                이전
+                Back
               </button>
               <button
                 onClick={handleProcess}
                 disabled={totalFiles === 0}
                 className="flex-1 bg-orange-500 text-white py-3 rounded-xl font-medium text-sm hover:bg-orange-600 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
-                시작하기! ({totalFiles}장)
+                Start! ({totalFiles} photos)
               </button>
             </div>
           </div>
@@ -300,7 +300,7 @@ export default function OnboardingPage() {
         {step === "processing" && (
           <div className="text-center py-8">
             <div className="animate-spin w-12 h-12 border-4 border-orange-200 border-t-orange-500 rounded-full mx-auto mb-4" />
-            <h2 className="text-lg font-bold mb-2">누끼 처리 중...</h2>
+            <h2 className="text-lg font-bold mb-2">Removing backgrounds...</h2>
             <p className="text-sm text-gray-400 mb-4">{progress}</p>
             <div className="w-full bg-gray-200 rounded-full h-2">
               <div
@@ -311,7 +311,7 @@ export default function OnboardingPage() {
               />
             </div>
             <p className="text-xs text-gray-400 mt-2">
-              {processedCount}/{totalCount} 완료
+              {processedCount}/{totalCount} done
             </p>
           </div>
         )}
@@ -320,11 +320,11 @@ export default function OnboardingPage() {
         {step === "done" && (
           <div className="text-center py-8">
             <p className="text-5xl mb-4">🎉</p>
-            <h2 className="text-xl font-bold mb-2">준비 완료!</h2>
+            <h2 className="text-xl font-bold mb-2">준비 done!</h2>
             <p className="text-sm text-gray-400 mb-6">
-              이제 {petName}이가 {userName}을 응원할 준비가 됐어요!
+              {petName} is ready to cheer you on, {userName}!
               <br />
-              브라우징하다 보면 {petName}이가 찾아올 거예요~
+              {petName} will visit you while you browse~
             </p>
           </div>
         )}

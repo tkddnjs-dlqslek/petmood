@@ -14,9 +14,9 @@ export default function TriggerSettings({
       <section className="bg-white rounded-xl p-5 shadow-sm">
         <label className="flex items-center justify-between mb-3">
           <div>
-            <span className="font-medium">타이머 알림</span>
+            <span className="font-medium">Timer Notifications</span>
             <p className="text-xs text-gray-400">
-              일정 시간마다 알림을 보내요
+              Sends notifications at regular intervals
             </p>
           </div>
           <input
@@ -49,12 +49,12 @@ export default function TriggerSettings({
             }
             className="w-full p-2 border border-gray-200 rounded-lg text-sm"
           >
-            <option value={15}>15분마다</option>
-            <option value={30}>30분마다</option>
-            <option value={45}>45분마다</option>
-            <option value={60}>1시간마다</option>
-            <option value={90}>1시간 30분마다</option>
-            <option value={120}>2시간마다</option>
+            <option value={15}>Every 15 min</option>
+            <option value={30}>Every 30 min</option>
+            <option value={45}>Every 45 min</option>
+            <option value={60}>Every 1 hour</option>
+            <option value={90}>Every 1.5 hours</option>
+            <option value={120}>Every 2 hours</option>
           </select>
         )}
       </section>
@@ -63,9 +63,9 @@ export default function TriggerSettings({
       <section className="bg-white rounded-xl p-5 shadow-sm">
         <label className="flex items-center justify-between mb-3">
           <div>
-            <span className="font-medium">브라우징 시간 알림</span>
+            <span className="font-medium">Browse Duration Alert</span>
             <p className="text-xs text-gray-400">
-              연속 브라우징 시간이 길면 쉬라고 알려줘요
+              Reminds you to take a break after extended browsing
             </p>
           </div>
           <input
@@ -101,11 +101,11 @@ export default function TriggerSettings({
             }
             className="w-full p-2 border border-gray-200 rounded-lg text-sm"
           >
-            <option value={30}>30분 연속 시</option>
-            <option value={45}>45분 연속 시</option>
-            <option value={60}>1시간 연속 시</option>
-            <option value={90}>1시간 30분 연속 시</option>
-            <option value={120}>2시간 연속 시</option>
+            <option value={30}>After 30 min</option>
+            <option value={45}>After 45 min</option>
+            <option value={60}>After 1 hour</option>
+            <option value={90}>1시간 After 30 min</option>
+            <option value={120}>After 2 hours</option>
           </select>
         )}
       </section>
@@ -114,9 +114,9 @@ export default function TriggerSettings({
       <section className="bg-white rounded-xl p-5 shadow-sm">
         <label className="flex items-center justify-between mb-3">
           <div>
-            <span className="font-medium">시간대 알림</span>
+            <span className="font-medium">Scheduled Notifications</span>
             <p className="text-xs text-gray-400">
-              특정 시간에 맞춤 알림을 보내요
+              Custom notifications at specific times
             </p>
           </div>
           <input
@@ -194,7 +194,7 @@ export default function TriggerSettings({
                   }}
                   className="text-red-400 hover:text-red-600 text-xs"
                 >
-                  삭제
+                  Delete
                 </button>
               </div>
             ))}
@@ -214,7 +214,7 @@ export default function TriggerSettings({
               }}
               className="text-sm text-orange-500 hover:text-orange-600"
             >
-              + 시간 추가
+              + Add Time
             </button>
           </div>
         )}

@@ -20,7 +20,7 @@ export default function App() {
   if (!settings) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-400">로딩 중...</p>
+        <p className="text-gray-400">Loading...</p>
       </div>
     );
   }
@@ -30,26 +30,25 @@ export default function App() {
   }
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: "photos", label: "사진 관리" },
-    { key: "triggers", label: "알림 설정" },
-    { key: "display", label: "표시 설정" },
+    { key: "photos", label: "Photos" },
+    { key: "triggers", label: "Notifications" },
+    { key: "display", label: "Display" },
   ];
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-2xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold">PetMood 설정</h1>
+              <h1 className="text-xl font-bold">PetMood Settings</h1>
               <p className="text-sm text-gray-400">
-                {settings.petName}의 주인 {settings.userName}
+                {settings.userName}, {settings.petName}'s owner
               </p>
             </div>
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-500">
-                {settings.isEnabled ? "켜짐" : "꺼짐"}
+                {settings.isEnabled ? "On" : "Off"}
               </span>
               <button
                 onClick={async () =>
@@ -67,8 +66,6 @@ export default function App() {
               </button>
             </div>
           </div>
-
-          {/* Tabs */}
           <nav className="flex gap-6 mt-4">
             {tabs.map((tab) => (
               <button
@@ -86,8 +83,6 @@ export default function App() {
           </nav>
         </div>
       </header>
-
-      {/* Content */}
       <main className="max-w-2xl mx-auto px-6 py-6">
         {activeTab === "photos" && <PhotoManager />}
         {activeTab === "triggers" && <TriggerSettings settings={settings} />}
@@ -97,20 +92,18 @@ export default function App() {
   );
 }
 
-// ===== Display Settings Tab =====
 function DisplaySettings({ settings }: { settings: PetMoodSettings }) {
   const positions = [
-    { value: "top-right", label: "우상단" },
-    { value: "top-left", label: "좌상단" },
-    { value: "bottom-right", label: "우하단" },
-    { value: "bottom-left", label: "좌하단" },
+    { value: "top-right", label: "Top Right" },
+    { value: "top-left", label: "Top Left" },
+    { value: "bottom-right", label: "Bottom Right" },
+    { value: "bottom-left", label: "Bottom Left" },
   ] as const;
 
   return (
     <div className="space-y-6">
-      {/* Position */}
       <section className="bg-white rounded-xl p-5 shadow-sm">
-        <h3 className="font-medium mb-3">알림 위치</h3>
+        <h3 className="font-medium mb-3">Notification Position</h3>
         <div className="grid grid-cols-2 gap-2">
           {positions.map((pos) => (
             <button
@@ -132,9 +125,8 @@ function DisplaySettings({ settings }: { settings: PetMoodSettings }) {
         </div>
       </section>
 
-      {/* Duration */}
       <section className="bg-white rounded-xl p-5 shadow-sm">
-        <h3 className="font-medium mb-3">표시 시간</h3>
+        <h3 className="font-medium mb-3">Display Duration</h3>
         <select
           value={settings.display.displayDurationSeconds}
           onChange={(e) =>
@@ -147,17 +139,16 @@ function DisplaySettings({ settings }: { settings: PetMoodSettings }) {
           }
           className="w-full p-2 border border-gray-200 rounded-lg text-sm"
         >
-          <option value={5}>5초</option>
-          <option value={8}>8초</option>
-          <option value={10}>10초</option>
-          <option value={15}>15초</option>
+          <option value={5}>5 sec</option>
+          <option value={8}>8 sec</option>
+          <option value={10}>10 sec</option>
+          <option value={15}>15 sec</option>
         </select>
       </section>
 
-      {/* Running Animation */}
       <section className="bg-white rounded-xl p-5 shadow-sm">
         <label className="flex items-center justify-between">
-          <span className="font-medium">달리기 애니메이션</span>
+          <span className="font-medium">Running Animation</span>
           <input
             type="checkbox"
             checked={settings.display.showRunningAnimation}
@@ -173,14 +164,13 @@ function DisplaySettings({ settings }: { settings: PetMoodSettings }) {
           />
         </label>
         <p className="text-xs text-gray-400 mt-1">
-          뛰는/노는 사진일 때 화면을 가로지르는 애니메이션
+          Pet runs across the screen for running category photos
         </p>
       </section>
 
-      {/* Active Hours */}
       <section className="bg-white rounded-xl p-5 shadow-sm">
         <label className="flex items-center justify-between mb-3">
-          <span className="font-medium">활성 시간대</span>
+          <span className="font-medium">Active Hours</span>
           <input
             type="checkbox"
             checked={settings.activeHours.enabled}
@@ -212,7 +202,7 @@ function DisplaySettings({ settings }: { settings: PetMoodSettings }) {
               }
               className="w-16 p-2 border border-gray-200 rounded-lg text-center"
             />
-            <span>시 ~</span>
+            <span>h to</span>
             <input
               type="number"
               min={0}
@@ -228,11 +218,11 @@ function DisplaySettings({ settings }: { settings: PetMoodSettings }) {
               }
               className="w-16 p-2 border border-gray-200 rounded-lg text-center"
             />
-            <span>시</span>
+            <span>h</span>
           </div>
         )}
         <p className="text-xs text-gray-400 mt-2">
-          이 시간대 밖에서는 알림을 보내지 않아요
+          No notifications outside these hours
         </p>
       </section>
     </div>

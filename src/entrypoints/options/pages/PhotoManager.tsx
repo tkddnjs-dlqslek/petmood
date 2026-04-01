@@ -5,12 +5,12 @@ import type { StoredPhoto, ActivityType } from "../../../types";
 import { ACTIVITY_TYPES } from "../../../types";
 
 const ACTIVITY_LABELS: Record<ActivityType, string> = {
-  happy: "웃는",
-  eating: "먹는",
-  running: "뛰는",
-  sleeping: "자는",
-  sad: "슬픔",
-  angry: "화남",
+  happy: "Happy",
+  eating: "Eating",
+  running: "Running",
+  sleeping: "Sleeping",
+  sad: "Sad",
+  angry: "Angry",
 };
 
 const MAX_TOTAL_PHOTOS = 100;
@@ -43,7 +43,7 @@ export default function PhotoManager() {
 
     const remaining = MAX_TOTAL_PHOTOS - photos.length;
     if (remaining <= 0) {
-      alert("사진은 최대 100장까지 등록할 수 있어요!");
+      alert("You can register up to 100 photos!");
       return;
     }
 
@@ -52,7 +52,7 @@ export default function PhotoManager() {
 
     for (let i = 0; i < filesToProcess.length; i++) {
       const file = filesToProcess[i];
-      setProcessingMsg(`${ACTIVITY_LABELS[activity]} ${i + 1}/${filesToProcess.length} 누끼 처리 중...`);
+      setProcessingMsg(`${ACTIVITY_LABELS[activity]} ${i + 1}/${filesToProcess.length} Removing backgrounds...`);
 
       const imageDataUrl = await fileToDataUrl(file);
       const thumbnailDataUrl = await createThumbnail(file);
@@ -97,7 +97,7 @@ export default function PhotoManager() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-medium">등록된 사진 ({photos.length}/100장)</h3>
+        <h3 className="font-medium">Registered Photos ({photos.length}/100)</h3>
       </div>
 
       {isProcessing && (
@@ -163,7 +163,7 @@ export default function PhotoManager() {
                     disabled={isProcessing}
                     className="text-xs bg-orange-100 text-orange-600 px-3 py-1.5 rounded-lg hover:bg-orange-200 transition disabled:opacity-50"
                   >
-                    + 추가
+                    + Add
                   </button>
                   <input
                     ref={(el) => {
@@ -205,7 +205,7 @@ export default function PhotoManager() {
               {isExpanded && categoryPhotos.length === 0 && (
                 <div className="px-4 pb-4">
                   <p className="text-xs text-gray-300 text-center py-4">
-                    아직 사진이 없어요
+                    No photos yet
                   </p>
                 </div>
               )}

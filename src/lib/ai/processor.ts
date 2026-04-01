@@ -23,14 +23,14 @@ export async function removeBackgroundFromImage(
   const log = onProgress ?? ((msg: string) => console.log("[PetMood]", msg));
 
   if (!bgRemover) {
-    log("배경 제거 모델 다운로드 중... (최초 1회)");
+    log("Downloading background removal model... (first time only)");
     bgRemover = await pipeline("background-removal", "briaai/RMBG-1.4", {
       device: "wasm",
     });
-    log("배경 제거 모델 준비 완료!");
+    log("Background removal model ready!");
   }
 
-  log("배경 제거 중...");
+  log("Removing background...");
   const output = await bgRemover(imageDataUrl, { threshold: 0.8 });
 
   // Extract RawImage
@@ -42,7 +42,7 @@ export async function removeBackgroundFromImage(
   }
 
   if (!rawImage) {
-    console.warn("[PetMood] 배경 제거 출력 인식 불가");
+    console.warn("[PetMood] Could not parse background removal output");
     return imageDataUrl;
   }
 
@@ -90,6 +90,6 @@ export async function removeBackgroundFromImage(
     ctx.putImageData(imageData, 0, 0);
   }
 
-  log("배경 제거 완료!");
+  log("Background removed!");
   return canvas.toDataURL("image/png");
 }

@@ -8,8 +8,8 @@ import {
 import type { PetMoodSettings, DisplayType } from "../../types";
 
 const ANIM_TESTS: { type: DisplayType; label: string }[] = [
-  { type: "bubble", label: "말풍선" },
-  { type: "running", label: "달리기 (잡아봐!)" },
+  { type: "bubble", label: "Speech Bubble" },
+  { type: "running", label: "Running (Catch me!)" },
 ];
 
 export default function App() {
@@ -26,7 +26,7 @@ export default function App() {
 
   if (!settings) {
     return (
-      <div className="w-[320px] p-4 text-center text-gray-400">로딩 중...</div>
+      <div className="w-[320px] p-4 text-center text-gray-400">Loading...</div>
     );
   }
 
@@ -35,13 +35,13 @@ export default function App() {
       <div className="w-[320px] p-6 text-center">
         <h2 className="text-lg font-bold mb-2">PetMood</h2>
         <p className="text-sm text-gray-500 mb-4">
-          반려동물 사진을 등록하고 시작하세요!
+          Register your pet's photos to get started!
         </p>
         <button
           onClick={() => chrome.runtime.openOptionsPage()}
           className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-600 transition"
         >
-          시작하기
+          Get Started
         </button>
       </div>
     );
@@ -54,7 +54,7 @@ export default function App() {
     try {
       const photo = await photoDB.getRandomPhoto();
       if (!photo) {
-        alert("사진을 먼저 등록해주세요!");
+        alert("Please register photos first!");
         return;
       }
 
@@ -74,9 +74,12 @@ export default function App() {
       });
 
       if (!tab?.id) {
-        alert("웹페이지를 열어주세요!");
+        alert("Please open a webpage!");
         return;
       }
+
+      // Import messages for running animation dialogues
+      const allMessages = await import("../../lib/templates/message-bank").then(m => m.MESSAGE_BANK);
 
       await chrome.tabs.sendMessage(tab.id, {
         type: "SHOW_NOTIFICATION",
@@ -86,11 +89,16 @@ export default function App() {
           displayType,
           position: settings.display.position,
           durationSeconds: settings.display.displayDurationSeconds,
+          // Extra lines for running animation
+          runLines: allMessages.running ?? [],
+          bounceLines: ["Boing!", "Wheee~!", "Wall? No problem!"],
+          caughtLines: allMessages.caught ?? ["Oh no... you got me..."],
+          escapedLines: allMessages.escaped ?? ["Hehehe~ can't catch me!"],
         },
       });
     } catch (err) {
       console.error("Test error:", err);
-      alert("알림 전송 실패. 웹페이지에서 다시 시도해주세요.");
+      alert("Failed to send. Please try on a webpage.");
     } finally {
       setSending(null);
     }
@@ -107,7 +115,7 @@ export default function App() {
         <div>
           <h2 className="text-lg font-bold">PetMood</h2>
           <p className="text-xs text-gray-400">
-            {settings.petName}이가 {settings.userName}을 응원해!
+            {settings.petName} cheers for {settings.userName}!
           </p>
         </div>
         <button
@@ -128,19 +136,19 @@ export default function App() {
       <div className="grid grid-cols-2 gap-2 mb-3">
         <div className="bg-gray-50 rounded-lg p-2 text-center">
           <p className="text-xl font-bold text-orange-500">{photoCount}</p>
-          <p className="text-[10px] text-gray-500">등록된 사진</p>
+          <p className="text-[10px] text-gray-500">Photos</p>
         </div>
         <div className="bg-gray-50 rounded-lg p-2 text-center">
           <p className="text-xl font-bold text-orange-500">
             {settings.totalNotificationsShown}
           </p>
-          <p className="text-[10px] text-gray-500">알림 횟수</p>
+          <p className="text-[10px] text-gray-500">Alerts</p>
         </div>
       </div>
 
       {/* Animation Test Buttons */}
       <div className="mb-3">
-        <p className="text-xs text-gray-400 mb-2">테스트</p>
+        <p className="text-xs text-gray-400 mb-2">Test</p>
         <div className="grid grid-cols-2 gap-2">
           {ANIM_TESTS.map(({ type, label }) => (
             <button
@@ -164,7 +172,7 @@ export default function App() {
         onClick={() => chrome.runtime.openOptionsPage()}
         className="w-full text-center text-sm text-orange-500 hover:text-orange-600 py-2 border border-orange-200 rounded-lg transition"
       >
-        설정 열기
+        Open Settings
       </button>
     </div>
   );

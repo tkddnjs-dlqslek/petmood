@@ -8,11 +8,11 @@ export default defineConfig({
     plugins: [tailwindcss()],
   }),
   manifest: {
-    name: "PetMood - 반려동물 웰니스 알림",
+    name: "PetMood - Pet Wellness Notifications",
     description:
-      "당신의 반려동물이 브라우징 중 응원 메시지를 보내드려요! 모든 AI 처리는 브라우저 내에서 수행됩니다.",
+      "Your pet sends you encouraging messages while you browse! All AI processing runs locally in your browser.",
     version: "0.1.0",
-    default_locale: "ko",
+    default_locale: "en",
     permissions: [
       "alarms",
       "storage",
