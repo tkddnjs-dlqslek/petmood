@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PetMood — Privacy Policy</title>
+  <style>
+    body { max-width: 720px; margin: 40px auto; padding: 0 20px;
+           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           line-height: 1.6; color: #222; }
+    h1 { font-size: 1.6rem; }
+    h2 { font-size: 1.15rem; margin-top: 1.8rem; }
+    code { background: #f4f4f4; padding: 1px 5px; border-radius: 4px; }
+    .updated { color: #888; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>PetMood Privacy Policy</h1>
+  <p class="updated">Last updated: May 19, 2026</p>
+
+  <p>
+    PetMood is a Chrome extension that shows animations of your own pet's photos
+    while you browse. This policy explains exactly what data the extension
+    handles. The short version: <strong>everything stays on your device, and we
+    collect nothing.</strong>
+  </p>
+
+  <h2>What PetMood stores</h2>
+  <p>
+    All data is stored locally in your browser and never leaves your device:
+  </p>
+  <ul>
+    <li>
+      <strong>Pet photos you upload</strong> — the original image, a
+      background-removed cutout, and a small thumbnail. These are saved in your
+      browser's local IndexedDB storage on your computer only.
+    </li>
+    <li>
+      <strong>Your settings</strong> — your name, your pet's name, how often the
+      pet appears, and the on/off state. Saved via
+      <code>chrome.storage.local</code> on your device.
+    </li>
+  </ul>
+
+  <h2>What PetMood does NOT do</h2>
+  <ul>
+    <li>It does <strong>not</strong> upload your photos anywhere.</li>
+    <li>It does <strong>not</strong> read, collect, or transmit the content of
+      the websites you visit.</li>
+    <li>It does <strong>not</strong> collect personal information, browsing
+      history, analytics, or any tracking data.</li>
+    <li>It has no accounts, no servers, and no advertising.</li>
+  </ul>
+
+  <h2>Network activity</h2>
+  <p>
+    PetMood makes exactly one kind of network request: on first use it downloads
+    an open-source AI background-removal model
+    (<code>briaai/RMBG-1.4</code>) from the Hugging Face content delivery network
+    (<code>huggingface.co</code>). This download fetches model data only so that
+    background removal can run <strong>locally in your browser</strong>. No
+    photos, settings, browsing data, or any other personal information are sent
+    in this request or anywhere else.
+  </p>
+
+  <h2>Permissions</h2>
+  <ul>
+    <li><code>alarms</code> — schedules the periodic timer that decides when your
+      pet appears.</li>
+    <li><code>storage</code> — saves your settings on your device.</li>
+    <li><code>unlimitedStorage</code> — lets your pet photos be stored in
+      IndexedDB without the default size cap (you can add up to 100 photos).</li>
+  </ul>
+
+  <h2>Data deletion</h2>
+  <p>
+    Because all data is local, removing it is entirely in your control. Deleting
+    photos in the extension's options, or uninstalling the extension, removes the
+    stored data from your device.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    Questions about this policy? Open an issue on the project's repository or
+    contact the developer listed on the Chrome Web Store listing.
+  </p>
+</body>
+</html>
