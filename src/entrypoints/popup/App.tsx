@@ -1,21 +1,20 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { settingsStore } from "../../lib/storage/settings-store";
 import { photoDB } from "../../lib/storage/photo-db";
 import {
-  selectMessage,
-  getTimeContext,
-} from "../../lib/templates/selector";
-import type { PetMoodSettings, DisplayType } from "../../types";
-
-const ANIM_TESTS: { type: DisplayType; label: string }[] = [
-  { type: "bubble", label: "Speech Bubble" },
-  { type: "running", label: "Running (Catch me!)" },
-];
+  ANIM_TESTS,
+  SEND_FAILURE_MESSAGES,
+  dispatchNotification,
+  type AnimChoice,
+} from "../../lib/test-animation";
+import type { PetMoodSettings, StoredPhotoMeta } from "../../types";
 
 export default function App() {
   const [settings, setSettings] = useState<PetMoodSettings | null>(null);
   const [photoCount, setPhotoCount] = useState(0);
   const [sending, setSending] = useState<string | null>(null);
+  // Cache lightweight metas only — never pin full cutouts in popup memory
+  const photosRef = useRef<StoredPhotoMeta[] | null>(null);
 
   useEffect(() => {
     settingsStore.get().then(setSettings);
@@ -47,61 +46,23 @@ export default function App() {
     );
   }
 
-  const handleTestAnimation = async (displayType: DisplayType) => {
+  const handleTestAnimation = async (requested: AnimChoice) => {
     if (sending) return;
-    setSending(displayType);
-
-    try {
-      const photo = await photoDB.getRandomPhoto();
-      if (!photo) {
-        alert("Please register photos first!");
-        return;
-      }
-
-      const hour = new Date().getHours();
-      const { text } = selectMessage({
-        activity: photo.activity,
-        triggerType: "timer",
-        currentHour: hour,
-        userName: settings.userName,
-        petName: settings.petName,
-        recentMessageIds: [],
-      });
-
-      const [tab] = await chrome.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
-
-      if (!tab?.id) {
-        alert("Please open a webpage!");
-        return;
-      }
-
-      // Import messages for running animation dialogues
-      const allMessages = await import("../../lib/templates/message-bank").then(m => m.MESSAGE_BANK);
-
-      await chrome.tabs.sendMessage(tab.id, {
-        type: "SHOW_NOTIFICATION",
-        payload: {
-          imageDataUrl: photo.cutoutDataUrl,
-          message: text,
-          displayType,
-          position: settings.display.position,
-          durationSeconds: settings.display.displayDurationSeconds,
-          // Extra lines for running animation
-          runLines: allMessages.running ?? [],
-          bounceLines: ["Boing!", "Wheee~!", "Wall? No problem!"],
-          caughtLines: allMessages.caught ?? ["Oh no... you got me..."],
-          escapedLines: allMessages.escaped ?? ["Hehehe~ can't catch me!"],
-        },
-      });
-    } catch (err) {
-      console.error("Test error:", err);
-      alert("Failed to send. Please try on a webpage.");
-    } finally {
-      setSending(null);
+    setSending(requested);
+    // The popup gates only the "Surprise Me!" path on the on/off toggle;
+    // specific animation buttons are always allowed because they're explicit
+    // test-mode taps.
+    const result = await dispatchNotification({
+      settings,
+      requested,
+      enforcePolicy: requested === "random",
+      photosCache: photosRef,
+    });
+    if (!result.ok) {
+      const base = SEND_FAILURE_MESSAGES[result.reason];
+      alert(result.error ? `${base}: ${String(result.error)}` : base);
     }
+    setSending(null);
   };
 
   const handleToggle = async () => {
@@ -120,42 +81,45 @@ export default function App() {
         </div>
         <button
           onClick={handleToggle}
-          className={`relative w-12 h-6 rounded-full transition-colors ${
+          className={`relative w-12 h-6 rounded-full transition-colors overflow-hidden p-0 ${
             settings.isEnabled ? "bg-orange-500" : "bg-gray-300"
           }`}
         >
           <span
-            className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-              settings.isEnabled ? "translate-x-6" : "translate-x-0.5"
+            className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+              settings.isEnabled ? "translate-x-6" : "translate-x-0"
             }`}
           />
         </button>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-2 mb-3">
-        <div className="bg-gray-50 rounded-lg p-2 text-center">
-          <p className="text-xl font-bold text-orange-500">{photoCount}</p>
-          <p className="text-[10px] text-gray-500">Photos</p>
-        </div>
-        <div className="bg-gray-50 rounded-lg p-2 text-center">
-          <p className="text-xl font-bold text-orange-500">
-            {settings.totalNotificationsShown}
-          </p>
-          <p className="text-[10px] text-gray-500">Alerts</p>
-        </div>
+      <div className="bg-gray-50 rounded-lg p-2 text-center mb-3">
+        <p className="text-xl font-bold text-orange-500">{photoCount}</p>
+        <p className="text-[10px] text-gray-500">Photos</p>
       </div>
 
       {/* Animation Test Buttons */}
       <div className="mb-3">
         <p className="text-xs text-gray-400 mb-2">Test</p>
-        <div className="grid grid-cols-2 gap-2">
-          {ANIM_TESTS.map(({ type, label }) => (
+        <button
+          onClick={() => handleTestAnimation("random")}
+          disabled={!!sending}
+          className={`w-full py-3 px-3 rounded-lg text-sm font-semibold transition border mb-2 ${
+            sending === "random"
+              ? "bg-orange-500 border-orange-500 text-white"
+              : "bg-gradient-to-r from-orange-400 to-pink-400 border-transparent text-white hover:from-orange-500 hover:to-pink-500"
+          } disabled:opacity-50`}
+        >
+          ✨ Surprise Me!
+        </button>
+        <div className="grid grid-cols-3 gap-1.5">
+          {ANIM_TESTS.filter((t) => t.type !== "random").map(({ type, label }) => (
             <button
               key={type}
               onClick={() => handleTestAnimation(type)}
               disabled={!!sending}
-              className={`py-2.5 px-3 rounded-lg text-sm font-medium transition border ${
+              className={`py-2 px-1.5 rounded-lg text-xs font-medium transition border ${
                 sending === type
                   ? "bg-orange-100 border-orange-300 text-orange-600"
                   : "bg-white border-gray-200 hover:border-orange-300 hover:bg-orange-50 text-gray-700"

@@ -1,34 +1,28 @@
-// ===== Activity Types =====
-export const ACTIVITY_TYPES = [
-  "happy",      // 웃는
-  "eating",     // 먹는
-  "running",    // 뛰는
-  "sleeping",   // 자는
-  "sad",        // 슬픔
-  "angry",      // 화남
-] as const;
+// ===== Pet & Display Types =====
+export type DisplayType =
+  | "stampede"
+  | "rain"
+  | "parade"
+  | "peekaboo"
+  | "bounce"
+  | "popcorn"
+  | "carousel"
+  | "float"
+  | "tornado"
+  | "photoBooth"
+  | "teleport"
+  | "dominoFall"
+  | "trampoline"
+  | "bowling"
+  | "fireworks"
+  | "kiss"
+  | "rainbowArc"
+  | "danceParty";
 
-export type ActivityType = (typeof ACTIVITY_TYPES)[number];
-
-export type PetType = "dog" | "cat";
-
-export type TimeContext = "morning" | "afternoon" | "evening" | "night";
-
-export type TriggerType = "timer" | "time-of-day" | "browse-duration";
-
-export type NotificationPosition =
-  | "top-right"
-  | "top-left"
-  | "bottom-right"
-  | "bottom-left";
-
-export type DisplayType = "bubble" | "running";
-
-// ===== Storage Types =====
+// ===== Settings =====
 export interface PetMoodSettings {
   userName: string;
   petName: string;
-  petType: PetType;
   isEnabled: boolean;
   onboardingCompleted: boolean;
 
@@ -37,98 +31,29 @@ export interface PetMoodSettings {
       enabled: boolean;
       intervalMinutes: number;
     };
-    timeOfDay: {
-      enabled: boolean;
-      slots: TimeSlot[];
-    };
-    browseDuration: {
-      enabled: boolean;
-      thresholdMinutes: number;
-    };
   };
 
-  display: {
-    position: NotificationPosition;
-    showRunningAnimation: boolean;
-    displayDurationSeconds: number;
-    soundEnabled: boolean;
-  };
-
-  activeHours: {
-    enabled: boolean;
-    startHour: number;
-    endHour: number;
-  };
-
-  models: {
-    classifierReady: boolean;
-    bgRemoverReady: boolean;
-  };
-
-  // Custom messages
-  customMessages: Record<string, string[]>; // e.g. { happy: ["msg1", "msg2"], ... }
-  messageMode: "mix" | "custom-only"; // mix = default + custom, custom-only = only user's
-
-  lastNotificationTimestamp: number;
-  browsingStartTimestamp: number;
-  totalNotificationsShown: number;
-  recentMessageIds: string[];
-}
-
-export interface TimeSlot {
-  hour: number;
-  minute: number;
-  activityHint?: ActivityType;
-  firedToday?: boolean;
+  frequencyPreset: "quiet" | "normal" | "lively" | "custom";
 }
 
 // ===== IndexedDB Types =====
-export interface StoredPhoto {
+
+export interface StoredPhotoMeta {
   id: string;
   originalBlob: Blob;
-  cutoutBlob: Blob;
-  cutoutDataUrl: string;
   thumbnailDataUrl: string;
-  activity: ActivityType;
-  confidence: number;
-  userCorrected: boolean;
-  petType: PetType;
   createdAt: number;
+  // Pre-v3 records may still carry the cutout inline. Reads fall back to this.
+  cutoutDataUrl?: string;
 }
 
-export interface CachedModel {
-  id: string;
-  blob: Blob;
-  version: string;
-  downloadedAt: number;
+export interface StoredPhoto extends StoredPhotoMeta {
+  cutoutDataUrl: string;
 }
 
 // ===== Notification Types =====
 export interface NotificationPayload {
   imageDataUrl: string;
-  message: string;
   displayType: DisplayType;
-  position: NotificationPosition;
-  durationSeconds: number;
-}
-
-// ===== Trigger Types =====
-export interface TriggerResult {
-  shouldNotify: boolean;
-  reason: TriggerType;
-  suggestedActivity?: ActivityType;
-  priority: number;
-}
-
-// ===== Processing Types =====
-export interface ProcessingProgress {
-  stage: "downloading" | "bg-removal" | "classifying" | "saving" | "done";
-  progress: number; // 0-100
-  message: string;
-}
-
-export interface ClassificationResult {
-  activity: ActivityType;
-  confidence: number;
-  allScores: Record<ActivityType, number>;
+  swarmImageUrls: string[];
 }

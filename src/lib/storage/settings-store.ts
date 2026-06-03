@@ -3,50 +3,17 @@ import type { PetMoodSettings } from "../../types";
 const DEFAULT_SETTINGS: PetMoodSettings = {
   userName: "",
   petName: "",
-  petType: "dog",
   isEnabled: false,
   onboardingCompleted: false,
 
   triggers: {
     timer: {
       enabled: true,
-      intervalMinutes: 30,
-    },
-    timeOfDay: {
-      enabled: false,
-      slots: [],
-    },
-    browseDuration: {
-      enabled: true,
-      thresholdMinutes: 60,
+      intervalMinutes: 10,
     },
   },
 
-  display: {
-    position: "bottom-right",
-    showRunningAnimation: true,
-    displayDurationSeconds: 8,
-    soundEnabled: false,
-  },
-
-  activeHours: {
-    enabled: false,
-    startHour: 9,
-    endHour: 23,
-  },
-
-  models: {
-    classifierReady: false,
-    bgRemoverReady: false,
-  },
-
-  customMessages: {},
-  messageMode: "mix",
-
-  lastNotificationTimestamp: 0,
-  browsingStartTimestamp: Date.now(),
-  totalNotificationsShown: 0,
-  recentMessageIds: [],
+  frequencyPreset: "lively",
 };
 
 const STORAGE_KEY = "petmood_settings";
@@ -80,7 +47,7 @@ export const settingsStore = {
       changes: Record<string, chrome.storage.StorageChange>
     ) => {
       if (changes[STORAGE_KEY]) {
-        callback({ ...DEFAULT_SETTINGS, ...changes[STORAGE_KEY].newValue });
+        callback({ ...DEFAULT_SETTINGS, ...(changes[STORAGE_KEY].newValue as Partial<PetMoodSettings>) });
       }
     };
     chrome.storage.local.onChanged.addListener(listener);

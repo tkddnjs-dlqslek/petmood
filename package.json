@@ -1,7 +1,7 @@
 {
   "name": "petmood",
   "version": "0.1.0",
-  "description": "PetMood - 반려동물 웰니스 크롬 익스텐션",
+  "description": "Chrome extension that overlays your pet on any page you browse — local AI background removal, 18 animations, automatic on a timer you set.",
   "private": true,
   "type": "module",
   "scripts": {
@@ -26,6 +26,7 @@
     "@types/chrome": "^0.1.38",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "canvas": "^3.2.3",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",
     "wxt": "^0.20.20"

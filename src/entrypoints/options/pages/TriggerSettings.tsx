@@ -1,5 +1,16 @@
 import { settingsStore } from "../../../lib/storage/settings-store";
+import { FREQUENCY_PRESETS } from "../../../lib/triggers/policy";
 import type { PetMoodSettings } from "../../../types";
+
+const FREQ_PRESETS: Array<{
+  key: PetMoodSettings["frequencyPreset"];
+  label: string;
+  desc: string;
+}> = [
+  { key: "quiet", label: "Quiet", desc: "Every 60 min" },
+  { key: "normal", label: "Normal", desc: "Every 30 min" },
+  { key: "lively", label: "Lively", desc: "Every 10 min" },
+];
 
 export default function TriggerSettings({
   settings,
@@ -8,216 +19,78 @@ export default function TriggerSettings({
 }) {
   const { triggers } = settings;
 
+  const applyFrequency = (
+    preset: PetMoodSettings["frequencyPreset"],
+    customMinutes?: number
+  ) => {
+    const minutes =
+      preset === "custom"
+        ? customMinutes ?? triggers.timer.intervalMinutes
+        : FREQUENCY_PRESETS[preset as keyof typeof FREQUENCY_PRESETS];
+    settingsStore.set({
+      frequencyPreset: preset,
+      triggers: {
+        ...triggers,
+        timer: { enabled: true, intervalMinutes: minutes },
+      },
+    });
+  };
+
   return (
     <div className="space-y-6">
-      {/* Timer Trigger */}
+      {/* Frequency Preset */}
       <section className="bg-white rounded-xl p-5 shadow-sm">
-        <label className="flex items-center justify-between mb-3">
-          <div>
-            <span className="font-medium">Timer Notifications</span>
-            <p className="text-xs text-gray-400">
-              Sends notifications at regular intervals
-            </p>
-          </div>
-          <input
-            type="checkbox"
-            checked={triggers.timer.enabled}
-            onChange={(e) =>
-              settingsStore.set({
-                triggers: {
-                  ...triggers,
-                  timer: { ...triggers.timer, enabled: e.target.checked },
-                },
-              })
-            }
-            className="w-4 h-4 accent-orange-500"
-          />
-        </label>
-        {triggers.timer.enabled && (
-          <select
-            value={triggers.timer.intervalMinutes}
-            onChange={(e) =>
-              settingsStore.set({
-                triggers: {
-                  ...triggers,
-                  timer: {
-                    ...triggers.timer,
-                    intervalMinutes: Number(e.target.value),
-                  },
-                },
-              })
-            }
-            className="w-full p-2 border border-gray-200 rounded-lg text-sm"
-          >
-            <option value={15}>Every 15 min</option>
-            <option value={30}>Every 30 min</option>
-            <option value={45}>Every 45 min</option>
-            <option value={60}>Every 1 hour</option>
-            <option value={90}>Every 1.5 hours</option>
-            <option value={120}>Every 2 hours</option>
-          </select>
-        )}
-      </section>
-
-      {/* Browse Duration Trigger */}
-      <section className="bg-white rounded-xl p-5 shadow-sm">
-        <label className="flex items-center justify-between mb-3">
-          <div>
-            <span className="font-medium">Browse Duration Alert</span>
-            <p className="text-xs text-gray-400">
-              Reminds you to take a break after extended browsing
-            </p>
-          </div>
-          <input
-            type="checkbox"
-            checked={triggers.browseDuration.enabled}
-            onChange={(e) =>
-              settingsStore.set({
-                triggers: {
-                  ...triggers,
-                  browseDuration: {
-                    ...triggers.browseDuration,
-                    enabled: e.target.checked,
-                  },
-                },
-              })
-            }
-            className="w-4 h-4 accent-orange-500"
-          />
-        </label>
-        {triggers.browseDuration.enabled && (
-          <select
-            value={triggers.browseDuration.thresholdMinutes}
-            onChange={(e) =>
-              settingsStore.set({
-                triggers: {
-                  ...triggers,
-                  browseDuration: {
-                    ...triggers.browseDuration,
-                    thresholdMinutes: Number(e.target.value),
-                  },
-                },
-              })
-            }
-            className="w-full p-2 border border-gray-200 rounded-lg text-sm"
-          >
-            <option value={30}>After 30 min</option>
-            <option value={45}>After 45 min</option>
-            <option value={60}>After 1 hour</option>
-            <option value={90}>1시간 After 30 min</option>
-            <option value={120}>After 2 hours</option>
-          </select>
-        )}
-      </section>
-
-      {/* Time of Day Trigger */}
-      <section className="bg-white rounded-xl p-5 shadow-sm">
-        <label className="flex items-center justify-between mb-3">
-          <div>
-            <span className="font-medium">Scheduled Notifications</span>
-            <p className="text-xs text-gray-400">
-              Custom notifications at specific times
-            </p>
-          </div>
-          <input
-            type="checkbox"
-            checked={triggers.timeOfDay.enabled}
-            onChange={(e) =>
-              settingsStore.set({
-                triggers: {
-                  ...triggers,
-                  timeOfDay: {
-                    ...triggers.timeOfDay,
-                    enabled: e.target.checked,
-                  },
-                },
-              })
-            }
-            className="w-4 h-4 accent-orange-500"
-          />
-        </label>
-
-        {triggers.timeOfDay.enabled && (
-          <div className="space-y-2">
-            {triggers.timeOfDay.slots.map((slot, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2 text-sm"
-              >
-                <input
-                  type="number"
-                  min={0}
-                  max={23}
-                  value={slot.hour}
-                  onChange={(e) => {
-                    const newSlots = [...triggers.timeOfDay.slots];
-                    newSlots[i] = { ...slot, hour: Number(e.target.value) };
-                    settingsStore.set({
-                      triggers: {
-                        ...triggers,
-                        timeOfDay: { ...triggers.timeOfDay, slots: newSlots },
-                      },
-                    });
-                  }}
-                  className="w-14 p-1 border border-gray-200 rounded text-center"
-                />
-                <span>:</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={59}
-                  step={5}
-                  value={slot.minute}
-                  onChange={(e) => {
-                    const newSlots = [...triggers.timeOfDay.slots];
-                    newSlots[i] = { ...slot, minute: Number(e.target.value) };
-                    settingsStore.set({
-                      triggers: {
-                        ...triggers,
-                        timeOfDay: { ...triggers.timeOfDay, slots: newSlots },
-                      },
-                    });
-                  }}
-                  className="w-14 p-1 border border-gray-200 rounded text-center"
-                />
-                <button
-                  onClick={() => {
-                    const newSlots = triggers.timeOfDay.slots.filter(
-                      (_, j) => j !== i
-                    );
-                    settingsStore.set({
-                      triggers: {
-                        ...triggers,
-                        timeOfDay: { ...triggers.timeOfDay, slots: newSlots },
-                      },
-                    });
-                  }}
-                  className="text-red-400 hover:text-red-600 text-xs"
-                >
-                  Delete
-                </button>
-              </div>
-            ))}
-
+        <h3 className="font-medium mb-1">Frequency</h3>
+        <p className="text-xs text-gray-400 mb-3">
+          How often your pet shows up while you're browsing.
+        </p>
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          {FREQ_PRESETS.map((p) => (
             <button
-              onClick={() => {
-                const newSlots = [
-                  ...triggers.timeOfDay.slots,
-                  { hour: 12, minute: 0 },
-                ];
-                settingsStore.set({
-                  triggers: {
-                    ...triggers,
-                    timeOfDay: { ...triggers.timeOfDay, slots: newSlots },
-                  },
-                });
-              }}
-              className="text-sm text-orange-500 hover:text-orange-600"
+              key={p.key}
+              onClick={() => applyFrequency(p.key)}
+              className={`py-3 px-2 rounded-lg border text-sm transition ${
+                settings.frequencyPreset === p.key
+                  ? "border-orange-500 bg-orange-50 text-orange-600"
+                  : "border-gray-200 hover:border-gray-300"
+              }`}
             >
-              + Add Time
+              <div className="font-medium">{p.label}</div>
+              <div className="text-[10px] text-gray-400">{p.desc}</div>
             </button>
-          </div>
-        )}
+          ))}
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-gray-500">Custom:</span>
+          <input
+            type="number"
+            min={1}
+            max={240}
+            value={triggers.timer.intervalMinutes}
+            onFocus={() => {
+              // Switch to custom as soon as the user touches the field so the
+              // preset highlights drop off — avoids the "Lively is still
+              // orange while I'm typing in Custom" confusion.
+              if (settings.frequencyPreset !== "custom") {
+                applyFrequency("custom", triggers.timer.intervalMinutes);
+              }
+            }}
+            onChange={(e) =>
+              applyFrequency("custom", Number(e.target.value))
+            }
+            className={`w-20 p-2 border rounded-lg text-center transition ${
+              settings.frequencyPreset === "custom"
+                ? "border-orange-500 bg-orange-50 text-orange-600 font-medium"
+                : "border-gray-200"
+            }`}
+          />
+          <span className="text-gray-500">min</span>
+        </div>
+        <p className="text-[11px] text-gray-400 mt-3 leading-relaxed">
+          Timing is approximate. Chrome may fire the alarm a little early or
+          late (and pauses it to save power when idle), so the actual gap can
+          drift by several seconds from the value you set.
+        </p>
       </section>
     </div>
   );

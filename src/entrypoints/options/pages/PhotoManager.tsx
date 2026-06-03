@@ -1,43 +1,37 @@
 import { useState, useEffect, useRef } from "react";
 import { photoDB } from "../../../lib/storage/photo-db";
-import { removeBackgroundFromImage } from "../../../lib/ai/processor";
-import type { StoredPhoto, ActivityType } from "../../../types";
-import { ACTIVITY_TYPES } from "../../../types";
-
-const ACTIVITY_LABELS: Record<ActivityType, string> = {
-  happy: "Happy",
-  eating: "Eating",
-  running: "Running",
-  sleeping: "Sleeping",
-  sad: "Sad",
-  angry: "Angry",
-};
+import { removeBackgroundFromImage, preloadBgRemover } from "../../../lib/ai/processor";
+import { fileToDataUrl, createThumbnail } from "../../../lib/image-utils";
+import { compactLegacyCutouts } from "../../../lib/cutout-maintenance";
+import type { StoredPhotoMeta } from "../../../types";
 
 const MAX_TOTAL_PHOTOS = 100;
 
 export default function PhotoManager() {
-  const [photos, setPhotos] = useState<StoredPhoto[]>([]);
+  const [photos, setPhotos] = useState<StoredPhotoMeta[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMsg, setProcessingMsg] = useState("");
-  const [expandedCategory, setExpandedCategory] = useState<ActivityType | null>(null);
-  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     loadPhotos();
+    // Warm up the model in the background so it's ready when the user clicks "+ Add"
+    preloadBgRemover().catch(() => {});
+    // Heal legacy full-res cutouts in the background (idempotent, self-correcting)
+    compactLegacyCutouts().catch((e) => console.error("[PetMood] compact failed:", e));
+    const bc = new BroadcastChannel("petmood");
+    bc.onmessage = (e) => {
+      if (e.data?.type === "cutout-updated") loadPhotos();
+    };
+    return () => bc.close();
   }, []);
 
   const loadPhotos = async () => {
-    const all = await photoDB.getAllPhotos();
+    const all = await photoDB.getAllPhotosMeta();
     setPhotos(all);
   };
 
-  const photosBy = (activity: ActivityType) =>
-    photos.filter((p) => p.activity === activity);
-
-  const handleAddPhotos = async (
-    activity: ActivityType,
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleAddPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
 
@@ -52,31 +46,28 @@ export default function PhotoManager() {
 
     for (let i = 0; i < filesToProcess.length; i++) {
       const file = filesToProcess[i];
-      setProcessingMsg(`${ACTIVITY_LABELS[activity]} ${i + 1}/${filesToProcess.length} Removing backgrounds...`);
+      setProcessingMsg(`${i + 1}/${filesToProcess.length} Removing background...`);
 
-      const imageDataUrl = await fileToDataUrl(file);
-      const thumbnailDataUrl = await createThumbnail(file);
+      const [imageDataUrl, thumbnailDataUrl] = await Promise.all([
+        fileToDataUrl(file),
+        createThumbnail(file),
+      ]);
 
       let cutoutDataUrl = imageDataUrl;
       try {
         cutoutDataUrl = await removeBackgroundFromImage(imageDataUrl, (msg) =>
-          setProcessingMsg(`${ACTIVITY_LABELS[activity]} ${i + 1}/${filesToProcess.length}: ${msg}`)
+          setProcessingMsg(`${i + 1}/${filesToProcess.length}: ${msg}`)
         );
       } catch (err) {
-        console.error("[PetMood] 누끼 실패:", err);
+        console.error("[PetMood] Cutout failed:", err);
       }
 
       const arrayBuffer = await file.arrayBuffer();
       await photoDB.addPhoto({
         id: crypto.randomUUID(),
         originalBlob: new Blob([arrayBuffer]),
-        cutoutBlob: new Blob([arrayBuffer]),
         cutoutDataUrl,
         thumbnailDataUrl,
-        activity,
-        confidence: 1.0,
-        userCorrected: false,
-        petType: "dog",
         createdAt: Date.now(),
       });
     }
@@ -85,158 +76,88 @@ export default function PhotoManager() {
     setProcessingMsg("");
     loadPhotos();
 
-    const ref = fileInputRefs.current[activity];
-    if (ref) ref.value = "";
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleDelete = async (id: string) => {
     await photoDB.deletePhoto(id);
-    loadPhotos();
+    setPhotos(prev => prev.filter(p => p.id !== id));
+  };
+
+  const handleEditClick = (photo: StoredPhotoMeta) => {
+    const url = chrome.runtime.getURL(`options.html?editPhotoId=${photo.id}`);
+    window.open(url, "_blank");
   };
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-medium">Registered Photos ({photos.length}/100)</h3>
-      </div>
-
-      {isProcessing && (
-        <div className="mb-4 p-3 bg-orange-50 rounded-lg text-sm text-orange-600 animate-pulse">
-          {processingMsg}
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between px-4 pt-4 pb-3">
+          <span className="font-medium text-sm">
+            My Photos <span className="text-gray-400 font-normal">{photos.length}/100</span>
+          </span>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isProcessing}
+            className="text-xs bg-orange-100 text-orange-600 px-3 py-1.5 rounded-lg hover:bg-orange-200 transition disabled:opacity-50"
+          >
+            + Add
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleAddPhotos}
+            className="hidden"
+          />
         </div>
-      )}
 
-      {/* Category sections */}
-      <div className="space-y-3">
-        {ACTIVITY_TYPES.map((activity) => {
-          const categoryPhotos = photosBy(activity);
-          const isExpanded = expandedCategory === activity;
+        {isProcessing && photos.length > 0 && (
+          <div className="mx-4 mb-3 p-3 bg-orange-50 rounded-lg text-sm text-orange-600 animate-pulse">
+            {processingMsg}
+          </div>
+        )}
 
-          return (
-            <div
-              key={activity}
-              className="bg-white rounded-xl shadow-sm overflow-hidden"
-            >
-              {/* Category header */}
-              <div className="flex items-center justify-between p-4">
-                <button
-                  onClick={() =>
-                    setExpandedCategory(isExpanded ? null : activity)
-                  }
-                  className="flex items-center gap-2"
-                >
-                  <span className="font-medium text-sm">
-                    {ACTIVITY_LABELS[activity]}
-                  </span>
-                  <span className="text-xs text-gray-400">
-                    {categoryPhotos.length}장
-                  </span>
-                  {categoryPhotos.length >= 2 && (
-                    <span className="text-xs text-gray-300">
-                      {isExpanded ? "▲" : "▼"}
-                    </span>
-                  )}
-                </button>
-
-                <div className="flex items-center gap-2">
-                  {/* Preview thumbnails (max 4) */}
-                  {!isExpanded && categoryPhotos.length > 0 && (
-                    <div className="flex -space-x-2">
-                      {categoryPhotos.slice(0, 4).map((p) => (
-                        <img
-                          key={p.id}
-                          src={p.thumbnailDataUrl}
-                          className="w-8 h-8 rounded-full border-2 border-white object-cover"
-                        />
-                      ))}
-                      {categoryPhotos.length > 4 && (
-                        <span className="w-8 h-8 rounded-full border-2 border-white bg-gray-100 flex items-center justify-center text-[10px] text-gray-500">
-                          +{categoryPhotos.length - 4}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Add button */}
-                  <button
-                    onClick={() => fileInputRefs.current[activity]?.click()}
-                    disabled={isProcessing}
-                    className="text-xs bg-orange-100 text-orange-600 px-3 py-1.5 rounded-lg hover:bg-orange-200 transition disabled:opacity-50"
-                  >
-                    + Add
-                  </button>
-                  <input
-                    ref={(el) => {
-                      fileInputRefs.current[activity] = el;
-                    }}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={(e) => handleAddPhotos(activity, e)}
-                    className="hidden"
+        {photos.length > 0 ? (
+          <div className="px-4 pb-4">
+            <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+              {photos.map((photo) => (
+                <div key={photo.id} className="relative group">
+                  <img
+                    src={photo.thumbnailDataUrl}
+                    alt=""
+                    loading="lazy"
+                    className="w-full aspect-square object-cover rounded-lg bg-gray-100"
                   />
+                  <button
+                    onClick={() => handleEditClick(photo)}
+                    className="absolute bottom-1 left-1 w-5 h-5 bg-white/90 rounded-full text-[10px] opacity-0 group-hover:opacity-100 transition flex items-center justify-center shadow"
+                    title="Edit cutout"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    onClick={() => handleDelete(photo.id)}
+                    className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-[10px] opacity-0 group-hover:opacity-100 transition flex items-center justify-center shadow"
+                  >
+                    &times;
+                  </button>
                 </div>
-              </div>
-
-              {/* Expanded photo grid */}
-              {isExpanded && categoryPhotos.length > 0 && (
-                <div className="px-4 pb-4">
-                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
-                    {categoryPhotos.map((photo) => (
-                      <div key={photo.id} className="relative group">
-                        <img
-                          src={photo.cutoutDataUrl}
-                          alt=""
-                          className="w-full aspect-square object-cover rounded-lg"
-                        />
-                        <button
-                          onClick={() => handleDelete(photo.id)}
-                          className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-[10px] opacity-0 group-hover:opacity-100 transition flex items-center justify-center shadow"
-                        >
-                          &times;
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Empty state */}
-              {isExpanded && categoryPhotos.length === 0 && (
-                <div className="px-4 pb-4">
-                  <p className="text-xs text-gray-300 text-center py-4">
-                    No photos yet
-                  </p>
-                </div>
-              )}
+              ))}
             </div>
-          );
-        })}
-      </div>
+          </div>
+        ) : (
+          <div className="px-4 pb-6 text-center">
+            {isProcessing ? (
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-6 h-6 border-2 border-orange-200 border-t-orange-500 rounded-full animate-spin" />
+                <p className="text-sm text-orange-500">{processingMsg || "Processing..."}</p>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-300">No photos yet. Add some!</p>
+            )}
+          </div>
+        )}
     </div>
   );
-}
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function createThumbnail(file: File, size = 64): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext("2d")!;
-      ctx.drawImage(img, 0, 0, size, size);
-      resolve(canvas.toDataURL("image/jpeg", 0.7));
-    };
-    img.src = URL.createObjectURL(file);
-  });
 }

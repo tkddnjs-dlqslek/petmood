@@ -1,21 +1,18 @@
 import { openDB, type IDBPDatabase } from "idb";
-import type { StoredPhoto, CachedModel, ActivityType } from "../../types";
+import type { StoredPhoto, StoredPhotoMeta } from "../../types";
 
 const DB_NAME = "PetMoodDB";
-const DB_VERSION = 1;
+const DB_VERSION = 3;
 
 interface PetMoodDB {
   photos: {
     key: string;
-    value: StoredPhoto;
-    indexes: {
-      "by-activity": ActivityType;
-      "by-created": number;
-    };
+    value: StoredPhotoMeta;
+    indexes: { "by-created": number };
   };
-  models: {
+  "photo-cutouts": {
     key: string;
-    value: CachedModel;
+    value: { id: string; cutoutDataUrl: string };
   };
 }
 
@@ -25,14 +22,41 @@ async function getDB(): Promise<IDBPDatabase<PetMoodDB>> {
   if (dbInstance) return dbInstance;
 
   dbInstance = await openDB<PetMoodDB>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      // Photos store
-      const photoStore = db.createObjectStore("photos", { keyPath: "id" });
-      photoStore.createIndex("by-activity", "activity");
-      photoStore.createIndex("by-created", "createdAt");
-
-      // Models cache store
-      db.createObjectStore("models", { keyPath: "id" });
+    async upgrade(db, oldVersion, _newVersion, tx) {
+      if (oldVersion < 1) {
+        const photoStore = db.createObjectStore("photos", { keyPath: "id" });
+        // Legacy by-activity index — created for older schema, never queried now.
+        // Left in place so v1 users don't need a v4 migration just to drop it.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (photoStore as any).createIndex("by-activity", "activity");
+        photoStore.createIndex("by-created", "createdAt");
+      }
+      if (oldVersion < 2) {
+        db.createObjectStore("photo-cutouts", { keyPath: "id" });
+      }
+      if (oldVersion < 3) {
+        // Move any cutoutDataUrl still embedded in the photos store into photo-cutouts.
+        // Runs once per user — covers v1 records AND any v2 records the previous
+        // (buggy, fire-and-forget) migration left behind.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const photosStore = tx.objectStore("photos" as any);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const cutoutsStore = tx.objectStore("photo-cutouts" as any);
+        let cursor = await photosStore.openCursor();
+        let count = 0;
+        while (cursor) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const rec = cursor.value as any;
+          if (rec.cutoutDataUrl) {
+            await cutoutsStore.put({ id: rec.id, cutoutDataUrl: rec.cutoutDataUrl });
+            const { cutoutDataUrl: _cd, ...clean } = rec;
+            await cursor.update(clean);
+            count++;
+          }
+          cursor = await cursor.continue();
+        }
+        if (count > 0) console.log(`[PetMood] Migrated ${count} photos to split-store schema`);
+      }
     },
   });
 
@@ -44,71 +68,54 @@ async function getDB(): Promise<IDBPDatabase<PetMoodDB>> {
 export const photoDB = {
   async addPhoto(photo: StoredPhoto): Promise<void> {
     const db = await getDB();
-    await db.put("photos", photo);
+    const { cutoutDataUrl, ...meta } = photo;
+    const tx = db.transaction(["photos", "photo-cutouts"], "readwrite");
+    await tx.objectStore("photos").put(meta);
+    await tx.objectStore("photo-cutouts").put({ id: photo.id, cutoutDataUrl });
+    await tx.done;
   },
 
-  async getPhoto(id: string): Promise<StoredPhoto | undefined> {
-    const db = await getDB();
-    return db.get("photos", id);
-  },
-
-  async getAllPhotos(): Promise<StoredPhoto[]> {
+  // Fast grid query — only reads photos store (no large cutoutDataUrl strings)
+  async getAllPhotosMeta(): Promise<StoredPhotoMeta[]> {
     const db = await getDB();
     return db.getAllFromIndex("photos", "by-created");
   },
 
-  async getPhotosByActivity(activity: ActivityType): Promise<StoredPhoto[]> {
+  // Full record with cutoutDataUrl — use only for editor / notifications
+  async getPhoto(id: string): Promise<StoredPhoto | undefined> {
     const db = await getDB();
-    return db.getAllFromIndex("photos", "by-activity", activity);
+    const [meta, cutout] = await Promise.all([
+      db.get("photos", id),
+      db.get("photo-cutouts", id),
+    ]);
+    if (!meta) return undefined;
+    // Fall back to an embedded cutoutDataUrl if the split-store record is missing
+    return { ...meta, cutoutDataUrl: cutout?.cutoutDataUrl ?? meta.cutoutDataUrl ?? "" };
   },
 
-  async getRandomPhoto(activity?: ActivityType): Promise<StoredPhoto | null> {
-    const photos = activity
-      ? await this.getPhotosByActivity(activity)
-      : await this.getAllPhotos();
-
-    if (photos.length === 0) return null;
-    return photos[Math.floor(Math.random() * photos.length)];
+  // Cheap bulk read of just the cutout entries — for size checks during
+  // compaction, avoiding the photos store entirely.
+  async getAllCutoutEntries(): Promise<{ id: string; cutoutDataUrl: string }[]> {
+    const db = await getDB();
+    return db.getAll("photo-cutouts");
   },
 
-  async updateActivity(
-    id: string,
-    activity: ActivityType
-  ): Promise<void> {
+  // Replace just the cutout image — for editor saves and compaction
+  async setCutout(id: string, cutoutDataUrl: string): Promise<void> {
     const db = await getDB();
-    const photo = await db.get("photos", id);
-    if (!photo) return;
-    photo.activity = activity;
-    photo.userCorrected = true;
-    await db.put("photos", photo);
+    await db.put("photo-cutouts", { id, cutoutDataUrl });
   },
 
   async deletePhoto(id: string): Promise<void> {
     const db = await getDB();
-    await db.delete("photos", id);
+    const tx = db.transaction(["photos", "photo-cutouts"], "readwrite");
+    await tx.objectStore("photos").delete(id);
+    await tx.objectStore("photo-cutouts").delete(id);
+    await tx.done;
   },
 
   async getPhotoCount(): Promise<number> {
     const db = await getDB();
     return db.count("photos");
-  },
-};
-
-// ===== Model Cache Operations =====
-
-export const modelCache = {
-  async getModel(id: string): Promise<CachedModel | undefined> {
-    const db = await getDB();
-    return db.get("models", id);
-  },
-
-  async saveModel(model: CachedModel): Promise<void> {
-    const db = await getDB();
-    await db.put("models", model);
-  },
-
-  async deleteModel(id: string): Promise<void> {
-    const db = await getDB();
-    await db.delete("models", id);
   },
 };

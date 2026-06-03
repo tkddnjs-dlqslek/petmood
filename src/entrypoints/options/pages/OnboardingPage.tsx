@@ -1,134 +1,121 @@
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { settingsStore } from "../../../lib/storage/settings-store";
 import { photoDB } from "../../../lib/storage/photo-db";
-import { removeBackgroundFromImage } from "../../../lib/ai/processor";
-import type { PetType, StoredPhoto, ActivityType } from "../../../types";
-import { ACTIVITY_TYPES } from "../../../types";
-
-const ACTIVITY_LABELS: Record<ActivityType, string> = {
-  happy: "Happy",
-  eating: "Eating",
-  running: "Running",
-  sleeping: "Sleeping",
-  sad: "Sad",
-  angry: "Angry",
-};
-
-const ACTIVITY_EMOJI: Record<ActivityType, string> = {
-  happy: "😊",
-  eating: "🍽️",
-  running: "🏃",
-  sleeping: "😴",
-  sad: "😢",
-  angry: "😠",
-};
+import { removeBackgroundFromImage, preloadBgRemover } from "../../../lib/ai/processor";
+import { fileToDataUrl, createThumbnail } from "../../../lib/image-utils";
+import type { StoredPhoto } from "../../../types";
 
 type Step = "profile" | "upload" | "processing" | "done";
+
+const MAX_PHOTOS = 100;
 
 export default function OnboardingPage() {
   const [step, setStep] = useState<Step>("profile");
   const [userName, setUserName] = useState("");
   const [petName, setPetName] = useState("");
-  const [petType, setPetType] = useState<PetType>("dog");
 
-  // Category-based upload: { activity: File[] }
-  const [categoryFiles, setCategoryFiles] = useState<
-    Record<ActivityType, File[]>
-  >(() => {
-    const init: any = {};
-    for (const a of ACTIVITY_TYPES) init[a] = [];
-    return init;
-  });
+  const [files, setFiles] = useState<File[]>([]);
 
-  const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState("");
   const [processedCount, setProcessedCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
 
-  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const previewUrlsRef = useRef<Map<File, string>>(new Map());
+
+  const getPreviewUrl = (file: File) => {
+    if (!previewUrlsRef.current.has(file)) {
+      previewUrlsRef.current.set(file, URL.createObjectURL(file));
+    }
+    return previewUrlsRef.current.get(file)!;
+  };
+
+  // Revoke all preview object URLs on unmount
+  useEffect(() => {
+    return () => {
+      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, []);
 
   const handleProfileNext = () => {
     if (!userName.trim() || !petName.trim()) return;
     setStep("upload");
+    // Start loading the model while the user picks photos
+    preloadBgRemover().catch(() => {});
   };
 
-  const handleFileSelect = (
-    activity: ActivityType,
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(e.target.files ?? []);
-    setCategoryFiles((prev) => ({
-      ...prev,
-      [activity]: [...prev[activity], ...selected].slice(0, 10),
-    }));
+    setFiles((prev) => [...prev, ...selected].slice(0, MAX_PHOTOS));
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const removeFile = (activity: ActivityType, index: number) => {
-    setCategoryFiles((prev) => ({
-      ...prev,
-      [activity]: prev[activity].filter((_, i) => i !== index),
-    }));
+  const removeFile = (index: number) => {
+    const file = files[index];
+    const url = previewUrlsRef.current.get(file);
+    if (url) {
+      URL.revokeObjectURL(url);
+      previewUrlsRef.current.delete(file);
+    }
+    setFiles((prev) => prev.filter((_, i) => i !== index));
   };
-
-  const totalFiles = Object.values(categoryFiles).reduce(
-    (sum, files) => sum + files.length,
-    0
-  );
 
   const handleProcess = async () => {
-    if (totalFiles === 0) return;
+    if (files.length === 0) return;
     setStep("processing");
-    setProcessing(true);
-    setTotalCount(totalFiles);
+    setTotalCount(files.length);
 
     let count = 0;
+    const failures: { name: string; error: string }[] = [];
 
     try {
-      for (const activity of ACTIVITY_TYPES) {
-        const files = categoryFiles[activity];
-        for (const file of files) {
-          count++;
-          setProgress(
-            `${ACTIVITY_LABELS[activity]} ${count}/${totalFiles} processing...`
+      for (const file of files) {
+        count++;
+        setProgress(`${count}/${files.length} processing...`);
+
+        const [imageDataUrl, thumbnailDataUrl] = await Promise.all([
+          fileToDataUrl(file),
+          createThumbnail(file),
+        ]);
+
+        // Skip the photo entirely on background-removal failure rather than
+        // storing the raw JPEG as a fake cutout.
+        let cutoutDataUrl: string;
+        try {
+          cutoutDataUrl = await removeBackgroundFromImage(
+            imageDataUrl,
+            (msg) => setProgress(`${count}/${files.length}: ${msg}`)
           );
-
-          const imageDataUrl = await fileToDataUrl(file);
-          const thumbnailDataUrl = await createThumbnail(file);
-
-          // Background removal only (no classification needed)
-          let cutoutDataUrl = imageDataUrl;
-          try {
-            cutoutDataUrl = await removeBackgroundFromImage(
-              imageDataUrl,
-              (msg) => setProgress(`${count}/${totalFiles}: ${msg}`)
-            );
-          } catch (err) {
-            console.error("[PetMood] 누끼 실패:", err);
-          }
-
-          const arrayBuffer = await file.arrayBuffer();
-          const photo: StoredPhoto = {
-            id: crypto.randomUUID(),
-            originalBlob: new Blob([arrayBuffer]),
-            cutoutBlob: new Blob([arrayBuffer]),
-            cutoutDataUrl,
-            thumbnailDataUrl,
-            activity, // User-selected category!
-            confidence: 1.0,
-            userCorrected: false,
-            petType,
-            createdAt: Date.now(),
-          };
-
-          await photoDB.addPhoto(photo);
+        } catch (err) {
+          console.error("[PetMood] Cutout failed:", err);
+          failures.push({ name: file.name, error: String(err) });
           setProcessedCount(count);
+          continue;
         }
+
+        const arrayBuffer = await file.arrayBuffer();
+        const photo: StoredPhoto = {
+          id: crypto.randomUUID(),
+          originalBlob: new Blob([arrayBuffer]),
+          cutoutDataUrl,
+          thumbnailDataUrl,
+          createdAt: Date.now(),
+        };
+
+        await photoDB.addPhoto(photo);
+        setProcessedCount(count);
+      }
+
+      if (failures.length > 0) {
+        setProgress(
+          `Background removal failed for ${failures.length} photo(s) (model load or processing error). The other ${count - failures.length} were saved.`
+        );
+        await new Promise((r) => setTimeout(r, 2000));
       }
 
       await settingsStore.set({
         userName: userName.trim(),
         petName: petName.trim(),
-        petType,
         isEnabled: true,
         onboardingCompleted: true,
       });
@@ -137,8 +124,6 @@ export default function OnboardingPage() {
     } catch (error) {
       console.error("Processing error:", error);
       setProgress(`Error: ${error}`);
-    } finally {
-      setProcessing(false);
     }
   };
 
@@ -180,27 +165,6 @@ export default function OnboardingPage() {
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-orange-400"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  What kind of pet?
-                </label>
-                <div className="flex gap-3">
-                  {(["dog", "cat"] as const).map((type) => (
-                    <button
-                      key={type}
-                      onClick={() => setPetType(type)}
-                      className={`flex-1 py-3 rounded-xl border text-sm font-medium transition ${
-                        petType === type
-                          ? "border-orange-500 bg-orange-50 text-orange-600"
-                          : "border-gray-200 text-gray-500 hover:border-gray-300"
-                      }`}
-                    >
-                      {type === "dog" ? "🐕 Dog" : "🐈 Cat"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <button
                 onClick={handleProfileNext}
                 disabled={!userName.trim() || !petName.trim()}
@@ -212,73 +176,65 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* Step 2: Category-based Upload */}
+        {/* Step 2: Bulk Upload */}
         {step === "upload" && (
           <div>
             <h1 className="text-xl font-bold text-center mb-2">
-              {petName}'s photos by category!
+              Upload {petName}'s photos!
             </h1>
             <p className="text-sm text-gray-400 text-center mb-3">
-              Add photos for each emotion (max 10 per category)
+              Add up to {MAX_PHOTOS} photos
             </p>
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-xs text-amber-700">
-              <strong>TIP:</strong> Close-up photos work best! Simpler backgrounds give cleaner cutouts.
+              <strong>TIP:</strong> Close-up photos work best — simpler backgrounds give cleaner cutouts.
             </div>
 
-            <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
-              {ACTIVITY_TYPES.map((activity) => (
-                <div
-                  key={activity}
-                  className="border border-gray-200 rounded-xl p-4"
+            <div className="border border-gray-200 rounded-xl p-4 mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-medium">
+                  {files.length}/{MAX_PHOTOS} photos
+                </span>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={files.length >= MAX_PHOTOS}
+                  className="text-xs bg-orange-100 text-orange-600 px-3 py-1.5 rounded-lg hover:bg-orange-200 transition disabled:opacity-50"
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">
-                      {ACTIVITY_EMOJI[activity]} {ACTIVITY_LABELS[activity]}
-                    </span>
-                    <button
-                      onClick={() => fileInputRefs.current[activity]?.click()}
-                      className="text-xs bg-orange-100 text-orange-600 px-3 py-1 rounded-lg hover:bg-orange-200 transition"
-                    >
-                      + Add Photos
-                    </button>
-                    <input
-                      ref={(el) => { fileInputRefs.current[activity] = el; }}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={(e) => handleFileSelect(activity, e)}
-                      className="hidden"
-                    />
-                  </div>
+                  + Add Photos
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+              </div>
 
-                  {categoryFiles[activity].length > 0 && (
-                    <div className="flex gap-2 flex-wrap">
-                      {categoryFiles[activity].map((file, i) => (
-                        <div key={i} className="relative group">
-                          <img
-                            src={URL.createObjectURL(file)}
-                            alt=""
-                            className="w-14 h-14 object-cover rounded-lg"
-                          />
-                          <button
-                            onClick={() => removeFile(activity, i)}
-                            className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
-                          >
-                            x
-                          </button>
-                        </div>
-                      ))}
+              {files.length > 0 ? (
+                <div className="grid grid-cols-5 gap-2 max-h-[320px] overflow-y-auto pr-1">
+                  {files.map((file, i) => (
+                    <div key={`${file.name}-${i}`} className="relative group">
+                      <img
+                        src={getPreviewUrl(file)}
+                        alt=""
+                        className="w-full aspect-square object-cover rounded-lg"
+                      />
+                      <button
+                        onClick={() => removeFile(i)}
+                        className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
+                      >
+                        x
+                      </button>
                     </div>
-                  )}
-
-                  {categoryFiles[activity].length === 0 && (
-                    <p className="text-xs text-gray-300">No photos yet</p>
-                  )}
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <p className="text-xs text-gray-300 text-center py-6">No photos yet — click "+ Add Photos"</p>
+              )}
             </div>
 
-            <div className="flex gap-3 mt-6">
+            <div className="flex gap-3">
               <button
                 onClick={() => setStep("profile")}
                 className="flex-1 py-3 rounded-xl border border-gray-200 text-sm text-gray-500 hover:bg-gray-50 transition"
@@ -287,10 +243,10 @@ export default function OnboardingPage() {
               </button>
               <button
                 onClick={handleProcess}
-                disabled={totalFiles === 0}
+                disabled={files.length === 0}
                 className="flex-1 bg-orange-500 text-white py-3 rounded-xl font-medium text-sm hover:bg-orange-600 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
-                Start! ({totalFiles} photos)
+                Start! ({files.length} photos)
               </button>
             </div>
           </div>
@@ -320,7 +276,7 @@ export default function OnboardingPage() {
         {step === "done" && (
           <div className="text-center py-8">
             <p className="text-5xl mb-4">🎉</p>
-            <h2 className="text-xl font-bold mb-2">준비 done!</h2>
+            <h2 className="text-xl font-bold mb-2">All set!</h2>
             <p className="text-sm text-gray-400 mb-6">
               {petName} is ready to cheer you on, {userName}!
               <br />
@@ -331,28 +287,4 @@ export default function OnboardingPage() {
       </div>
     </div>
   );
-}
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function createThumbnail(file: File, size = 64): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext("2d")!;
-      ctx.drawImage(img, 0, 0, size, size);
-      resolve(canvas.toDataURL("image/jpeg", 0.7));
-    };
-    img.src = URL.createObjectURL(file);
-  });
 }
